@@ -1,10 +1,22 @@
-# 课堂 AI：整改候选版本
+# 课堂 AI（open-classroom-ai）
 
-本目录是 Open WebUI 0.11.2 的课堂审批集成。提供单独的审批/额度/执行服务、原生登录和文件桥接、教师管理页与学生状态页。
+Open WebUI 0.11.2 的课堂审批集成：独立审批/额度/执行服务、原生登录与文件桥接、教师管理页与学生提问页。当前测试候选版本 **2.1.8**。
 
-完整便携 ZIP 由 `scripts/Build-Package.ps1` 构建，包含 Python 3.11.9 及已有完整运行时，不包含真实账号、聊天、上传文件或密钥。不要把工作区的 `rehearsal`、旧发行目录或实际 `data` 手动复制进发行包。
+源码仓库：https://github.com/DRMus2000/open-classroom-ai
 
-首次使用及迁移步骤见 [教师指南](TEACHER_GUIDE_CN.md)。验证范围和剩余验收项见 [实施状态](IMPLEMENTATION_STATUS.md)。原始审计报告保持不变，作为修复前证据。
+完整便携 ZIP 由 `scripts/Build-Package.ps1` 构建（输出名含版本号，如 `openwebui-classroom-2.1.8-windows-x64.zip`），含 Python 3.11.9 与已有完整运行时，不含真实账号、聊天、上传文件或密钥。不要把工作区的 `rehearsal`、旧发行目录或实际 `data` 手动复制进发行包。
+
+## 文档
+
+| 文档 | 用途 |
+|---|---|
+| [TEACHER_GUIDE_CN.md](TEACHER_GUIDE_CN.md) | 教师安装、日常使用与运维 |
+| [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) | 当前版本实现与验证边界 |
+| [docs/CLASSROOM_AI_REQUIREMENTS.md](docs/CLASSROOM_AI_REQUIREMENTS.md) | 现行需求与验收标准 |
+| [docs/README.md](docs/README.md) | 文档索引（含历史审计说明） |
+| [NOTICE](NOTICE) / [LICENSE](LICENSE) | 许可与第三方声明 |
+
+`docs/reference/` 与部分审计报告保留修复前证据，**不代表当前源码状态**；以实施状态与需求文档为准。
 
 ## 许可
 
