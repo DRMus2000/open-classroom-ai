@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>课堂 AI · 教师管理</title>
+<link rel="stylesheet" href="teacher.css?v=ui-fix-20260918b">
+</head>
+<body>
+<div class="shell">
+  <aside class="side">
+    <div class="brand"><span class="brand-mark">AI</span><div><strong>课堂 AI</strong><small>教师管理</small></div></div>
+    <nav class="nav" aria-label="管理分区">
+      <button class="nav-item" data-view="review">审核队列<span class="nav-count" id="nav-pending"></span></button>
+      <button class="nav-item" data-view="students">学生与额度</button>
+      <button class="nav-item" data-view="insights">使用概况</button>
+      <button class="nav-item" data-view="roster">名册导入</button>
+      <button class="nav-item" data-view="settings">课堂设置</button>
+    </nav>
+    <div class="side-foot"><a href="/">← 返回原生对话</a></div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div class="topbar-left"><h1 id="view-title">审核队列</h1><span id="health" class="pill" role="status"></span></div>
+      <div class="topbar-actions"><button id="refresh" class="btn">刷新</button><button id="pause" class="btn btn-danger">暂停全班 AI</button></div>
+    </header>
+    <p id="notice" class="notice" role="alert" hidden></p>
+
+    <section class="view" data-view="review">
+      <div class="toolbar">
+        <select id="filter" class="select">
+          <option value="pending">待审核</option>
+          <option value="approved_queued">已批准排队</option>
+          <option value="generating">正在生成</option>
+          <option value="">全部历史</option>
+        </select>
+        <div class="spacer"></div>
+        <button id="approveall" class="btn btn-primary">批准选中</button>
+        <button id="rejectall" class="btn btn-danger-outline">拒绝选中并扣次</button>
+      </div>
+      <div id="queue" class="list"></div>
+      <div class="list-foot"><button id="more" class="btn btn-ghost" hidden>加载更多</button></div>
+    </section>
+
+    <section class="view" data-view="students" hidden>
+      <div class="stats">
+        <div class="stat"><span id="stat-total">0</span><small>学生总数</small></div>
+        <div class="stat"><span id="stat-available">0</span><small>今日剩余次数合计</small></div>
+        <div class="stat"><span id="stat-active">0</span><small>正在处理的请求</small></div>
+        <div class="stat"><span id="stat-paused">0</span><small>AI 已暂停的学生</small></div>
+      </div>
+      <div class="toolbar">
+        <label class="check"><input type="checkbox" id="selectall">全选本页</label>
+        <span id="student-selection-info" class="muted"></span>
+        <button id="clear-student-selection" class="btn btn-ghost btn-sm">清空选择</button>
+        <div class="spacer"></div>
+        <label class="muted">每页
+          <select id="student-page-size" class="select">
+            <option value="10">10 人</option><option value="20">20 人</option><option value="30">30 人</option><option value="50">50 人</option>
+          </select>
+        </label>
+        <button id="student-prev" class="btn btn-ghost btn-sm">上一页</button>
+        <span id="student-page-info" class="muted"></span>
+        <button id="student-next" class="btn btn-ghost btn-sm">下一页</button>
+      </div>
+      <div id="students" class="list"></div>
+      <div class="card">
+        <h3>调整选中学生的今日额度</h3>
+        <p class="muted">先勾选学生，再选择增减；系统会先预览再确认，并记录操作原因。</p>
+        <div class="toolbar">
+          <button id="plus" class="btn">选中学生 +1</button>
+          <button id="minus" class="btn">选中学生 -1</button>
+          <input id="delta" class="input input-sm" type="number" min="-1000" max="1000" value="1" aria-label="自定义增减数量">
+          <button id="custom" class="btn">自定义调整</button>
+          <input id="reason" class="input" value="课堂临时调整" placeholder="调整原因">
+          <div class="spacer"></div>
+          <button id="export" class="btn btn-ghost">导出选中学生（未选则全班）</button>
+        </div>
+        <p id="quota-status" class="status" role="status"></p>
+        <p id="export-status" class="status"></p>
+      </div>
+    </section>
+
+    <section class="view" data-view="insights" hidden>
+      <div class="toolbar">
+        <span class="muted" id="insights-date"></span>
+        <span id="insights-mode" class="badge"></span>
+        <div class="spacer"></div>
+        <button id="insights-refresh" class="btn">刷新概况</button>
+      </div>
+      <div class="stats" id="insights-summary"></div>
+      <div class="grid-2">
+        <div class="card">
+          <h3>关键词词云</h3>
+          <p class="muted">根据今日学生提问文本统计（轻量分词，不含第三方词库）。</p>
+          <canvas id="wordcloud" width="640" height="320" aria-label="关键词词云"></canvas>
+          <div id="keyword-list" class="keyword-list"></div>
+        </div>
+        <div class="card">
+          <h3>今日提问排行</h3>
+          <p class="muted">按提问次数排序，便于发现高频使用者。</p>
+          <div id="top-students" class="rank-list"></div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>今日时段分布</h3>
+        <p class="muted">按课堂时区统计每小时提问量。</p>
+        <div id="hourly-bars" class="hourly"></div>
+      </div>
+    </section>
+
+    <section class="view" data-view="roster" hidden>
+      <div class="grid-2">
+        <div class="card">
+          <h3>批量导入 CSV</h3>
+          <p class="muted">UTF-8 编码，表头为 Name,Email,Password,Role；密码至少 8 位，Role 填 user，一次最多 30 人。</p>
+          <input id="roster" class="file" type="file" accept=".csv">
+          <div class="toolbar" style="margin-top:12px">
+            <button id="import" class="btn btn-primary">预览导入</button>
+            <button id="commit-import" class="btn btn-primary" hidden disabled>确认导入有效行</button>
+          </div>
+        </div>
+        <div class="card">
+          <h3>单独添加一名学生</h3>
+          <p class="muted">无需 CSV。学生首次登录仍需修改密码。</p>
+          <label class="field">姓名<input id="single-name" class="input" maxlength="120" placeholder="张三"></label>
+          <label class="field">登录账号<input id="single-email" class="input" maxlength="320" placeholder="zhangsan@school.local"></label>
+          <label class="field">初始密码<input id="single-password" class="input" type="password" minlength="8" placeholder="至少 8 位"></label>
+          <button id="add-student" class="btn btn-primary">添加该学生</button>
+        </div>
+      </div>
+      <p id="import-status" class="status" role="status"></p>
+      <div id="import-preview" class="table-wrap"></div>
+      <pre id="account-status" class="output"></pre>
+    </section>
+
+    <section class="view" data-view="settings" hidden>
+      <div class="card" id="review-mode-panel">
+        <h3>审核模式</h3>
+        <p class="muted">默认教师审核。可切换为 AI 审核或不审核自动放行。AI 审核失败时回退到待教师处理，不自动扣次。</p>
+        <div class="mode-grid" role="radiogroup" aria-label="审核模式">
+          <label class="mode-option"><input type="radio" name="review-mode" value="teacher">教师审核<span>每条提问需教师批准</span></label>
+          <label class="mode-option"><input type="radio" name="review-mode" value="ai">AI 审核<span>共用审计会话，可在下方查看历史</span></label>
+          <label class="mode-option"><input type="radio" name="review-mode" value="none">不审核<span>提交后直接进入生成队列</span></label>
+        </div>
+        <p id="review-mode-status" class="status" role="status"></p>
+      </div>
+
+      <div class="card" id="audit-prompt-panel">
+        <h3>AI 审计系统提示词</h3>
+        <p class="muted">仅用于 AI 审核模式。与课堂系统提示词相互独立。</p>
+        <label class="field" for="audit-prompt-text">审计提示词（最多 20000 字）</label>
+        <textarea id="audit-prompt-text" maxlength="20000" style="min-height:140px"></textarea>
+        <div class="toolbar" style="margin-top:10px">
+          <button id="save-audit-prompt" class="btn btn-primary" disabled>保存审计提示词</button>
+          <button id="default-audit-prompt" class="btn">填入默认提示词</button>
+          <button id="reload-audit-prompt" class="btn btn-ghost">重新加载</button>
+        </div>
+        <p id="audit-prompt-status" class="status" role="status"></p>
+      </div>
+
+      <div class="card" id="ai-audit-history-panel">
+        <h3>AI 审计历史</h3>
+        <p class="muted">查看近期 AI 审核结论。清空会话只重置审计上下文，不影响学生请求记录。</p>
+        <div class="toolbar">
+          <button id="reload-ai-audit" class="btn">刷新历史</button>
+          <button id="clear-ai-audit-session" class="btn btn-ghost">清空审计会话上下文</button>
+        </div>
+        <div id="ai-audit-history" style="margin-top:12px"></div>
+        <p id="ai-audit-status" class="status" role="status"></p>
+      </div>
+
+      <div class="card" id="system-prompt-panel">
+        <h3>课堂系统提示词</h3>
+        <p class="muted">统一设定学生 AI 与访客链接的角色和回答要求。仅作用于新对话，已有学生对话保留原提示词。</p>
+        <label class="field" for="system-prompt-text">系统提示词（最多 20000 字）</label>
+        <textarea id="system-prompt-text" maxlength="20000" style="min-height:200px"></textarea>
+        <div class="toolbar" style="margin-top:10px">
+          <button id="save-system-prompt" class="btn btn-primary" disabled>保存提示词</button>
+          <button id="default-system-prompt" class="btn">填入默认提示词</button>
+          <button id="reload-system-prompt" class="btn btn-ghost">重新加载</button>
+        </div>
+        <p id="system-prompt-status" class="status" role="status"></p>
+      </div>
+
+      <div class="card" id="guest-link-panel">
+        <h3>临时免密 AI 链接</h3>
+        <p class="muted">开启后生成可分享链接：局域网内打开即可使用课堂 AI，无需登录、不占学生次数、不经审批，但仍使用上方系统提示词。关闭开关或重新生成后，旧链接立即失效。</p>
+        <p class="callout">持有链接者可无限调用教师机上的模型额度，仅建议机房临时活动使用，用完请及时关闭。</p>
+        <div class="toolbar">
+          <label class="switch"><input type="checkbox" id="guest-enabled">启用访客链接</label>
+          <div class="spacer"></div>
+          <button id="guest-rotate" class="btn">重新生成链接</button>
+          <button id="guest-copy" class="btn btn-primary" hidden>复制链接</button>
+        </div>
+        <input id="guest-url" class="input" readonly style="width:100%;margin-top:12px" placeholder="开启或重新生成后在此显示链接">
+        <p id="guest-status" class="status" role="status"></p>
+      </div>
+    </section>
+  </main>
+</div>
+
+<dialog id="detail">
+  <div class="dialog-body">
+    <div class="dialog-head"><h2 id="detail-title">审核原文与附件</h2><button id="close" class="btn btn-ghost">关闭</button></div>
+    <pre id="original"></pre>
+    <div id="attachments"></div>
+    <details class="advanced">
+      <summary>高级：修改请求内容后批准</summary>
+      <label>修改后的请求 JSON（保留原文快照）<textarea id="edited"></textarea></label>
+      <label>审核备注<input id="note" class="input" placeholder="可选"></label>
+      <div class="dialog-actions"><button id="editapprove" class="btn btn-primary">修改并批准</button></div>
+    </details>
+  </div>
+</dialog>
+
+<script src="app.js?v=ui-fix-20260918e"></script>
+<script src="system-prompt.js?v=teacher-20260917"></script>
+<script src="guest-link.js?v=teacher-20260917"></script>
+<script src="review-mode.js?v=ui-fix-20260918b"></script>
+<script src="insights.js?v=insights-20260917"></script>
+</body>
+</html>

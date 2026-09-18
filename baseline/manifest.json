@@ -1,0 +1,23 @@
+{
+  "captured_at": "2026-09-08",
+  "bundle": "dist/openwebui-classroom-review-windows-x64",
+  "open_webui_version": "0.11.2",
+  "python_version": "3.11.9",
+  "zip_sha256": "8902CAC85A0DC1668177D9EDBAE2A0B6F410784AE75864428DA40DF6550463E8",
+  "custom_files": {
+    "app/review_service.py": "373B21FE77D6D62C714779E475CB11BBEF198F36CAF8BABD234CA1F39EFA63F9",
+    "app/open_webui_review_filter.py": "76A6909AF5E79F713AC4D08BBA435963EDA674A55EF2C24387AE5D412D21A110",
+    "app/bootstrap_openwebui.py": "CF1A2F73EFB4617412784F3BD2985127AA02EF9B8A57F6A38F72954BF8A854AB",
+    "app/run_openwebui.py": "FF4112FE8A793A9B8DB823263C94D0287340B7249D1FE48E942C5699274A6BAC",
+    "app/review.html": "CB0FE9E167309A95D927096E255C9E4D3A9540685D30B344764B034EA2626F3E",
+    "scripts/Start.ps1": "3A8B9E331027BB562F6D511471C712195AE952D9DBAE59B61D99F67C330DECC5",
+    "scripts/Stop.ps1": "D92A3731611745BE0C0ED4073F0F0112DFFB3A26E11224EBBF96823C7D478202",
+    "scripts/Status.ps1": "140352DCEC2FC406D6232ED8124AAC75717FEF41588165A8B8040B85A7BC8FEA"
+  },
+  "isolation": {
+    "live_data_copied": false,
+    "credentials_copied": false,
+    "logs_copied": false,
+    "runtime_copied": false
+  }
+}

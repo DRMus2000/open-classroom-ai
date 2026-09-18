@@ -1,0 +1,16 @@
+{
+  "open_webui": "0.11.2",
+  "python": "3.11.9",
+  "protocol_version": 1,
+  "tested_routes": {
+    "student_model": ["/api/chat/completions", "/api/v1/chat/completions"],
+    "denied_student_prefixes": ["/openai/", "/ollama/", "/api/v1/tasks", "/api/v1/embeddings", "/api/v1/audio", "/api/v1/images", "/api/v1/models", "/api/v1/tools", "/api/v1/functions", "/api/v1/configs", "/api/v1/search", "/api/v1/generate", "/api/generate"]
+  },
+  "pipe": {
+    "model_id": "classroom_pipe",
+    "upstream_model": "selected from the server-side allowed model policy",
+    "one_provider_exit": true,
+    "files_process": false
+  },
+  "note": "Any Open WebUI or runtime upgrade requires the route and bypass matrix before students are enabled."
+}

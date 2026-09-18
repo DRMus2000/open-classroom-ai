@@ -1,0 +1,41 @@
+# Bytecode / caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local / rehearsal installs (may contain secrets and student data)
+rehearsal/
+private-data-backup-*/
+data/
+**/data/classroom/
+**/data/openwebui/
+
+# Runtime secrets and databases
+**/bridge.key
+**/.webui_secret_key
+**/provider-config.json
+**/teacher-login.json
+**/classroom-instance.json
+**/service.lock
+**/*.db
+**/*.db-shm
+**/*.db-wal
+**/*.sqlite3
+
+# Built release artifacts (keep only manifests in source control if needed)
+release/*.zip
+release/*.sha256
+release/*.log
+release/*-patch*.sha256
+release/**/data/
+release/openwebui-classroom-windows-x64/
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+*.swp
+.vscode/
+.idea/

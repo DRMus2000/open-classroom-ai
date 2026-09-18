@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>课堂 AI 审核</title>
+  <style>
+    :root { font-family: system-ui, -apple-system, "Microsoft YaHei", sans-serif; color: #17202a; background: #f4f6f8; }
+    body { max-width: 1100px; margin: 0 auto; padding: 24px; }
+    header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+    h1 { margin: 0; font-size: 24px; } .muted { color: #66727e; font-size: 13px; }
+    .toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    button, input { font: inherit; } button { border: 0; border-radius: 6px; padding: 8px 13px; cursor: pointer; }
+    button.primary { color: white; background: #1677ff; } button.danger { color: white; background: #d64545; }
+    button.secondary { color: #24313d; background: #e4e9ee; } button:disabled { opacity: .55; cursor: not-allowed; }
+    input { border: 1px solid #c7d0d9; border-radius: 6px; padding: 8px 10px; min-width: 220px; }
+    #list { display: grid; gap: 12px; } .empty { padding: 50px 0; text-align: center; color: #74808b; }
+    article { background: #fff; border: 1px solid #dfe5ea; border-radius: 8px; padding: 16px; box-shadow: 0 1px 2px #17202a0d; }
+    .meta { display: flex; gap: 12px; flex-wrap: wrap; color: #66727e; font-size: 13px; margin-bottom: 10px; }
+    .message { white-space: pre-wrap; overflow-wrap: anywhere; background: #f7f9fa; border-left: 3px solid #1677ff; padding: 12px; line-height: 1.55; }
+    .actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; } .status { font-size: 13px; color: #1677ff; }
+    @media (max-width: 600px) { body { padding: 14px; } header { align-items: flex-start; flex-direction: column; } input { min-width: 0; width: 100%; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div><h1>课堂 AI 消息审核</h1><div class="muted">仅显示待教师处理的学生问题，批准后才会调用模型。</div></div>
+    <div class="toolbar"><input id="token" type="password" placeholder="审核令牌（启用时填写）"><button class="secondary" onclick="refresh()">刷新</button></div>
+  </header>
+  <div id="status" class="status">正在连接审核服务...</div>
+  <main id="list"></main>
+  <script>
+    const tokenInput = document.querySelector('#token');
+    tokenInput.value = sessionStorage.reviewToken || '';
+    tokenInput.addEventListener('change', () => { sessionStorage.reviewToken = tokenInput.value; refresh(); });
+    const headers = () => tokenInput.value ? {'X-Review-Token': tokenInput.value} : {};
+    const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+    async function refresh() {
+      try {
+        const response = await fetch('/api/requests?status=pending', {headers: headers(), cache: 'no-store'});
+        if (!response.ok) throw new Error(response.status === 401 ? '审核令牌不正确' : `HTTP ${response.status}`);
+        const data = await response.json();
+        document.querySelector('#status').textContent = `待审核 ${data.requests.length} 条 · ${new Date().toLocaleTimeString()}`;
+        const list = document.querySelector('#list'); list.textContent = '';
+        if (!data.requests.length) { list.innerHTML = '<div class="empty">暂无待审核消息</div>'; return; }
+        for (const item of data.requests) {
+          const card = document.createElement('article');
+          const who = item.user_name || item.user_email || item.user_id || '未命名学生';
+          card.innerHTML = `<div class="meta"><strong>${esc(who)}</strong><span>${esc(item.created_at)}</span><span>会话 ${esc(item.chat_id || '-')}</span></div><div class="message"></div><div class="actions"><button class="primary">通过</button><button class="secondary">修改后通过</button><button class="danger">拒绝</button></div>`;
+          card.querySelector('.message').textContent = item.message;
+          const buttons = card.querySelectorAll('button');
+          buttons[0].onclick = () => decide(item.id, 'approve');
+          buttons[1].onclick = () => { const edited = prompt('可修改学生问题，修改后的内容会提交给 AI：', item.message); if (edited !== null) decide(item.id, 'edit', edited); };
+          buttons[2].onclick = () => { const note = prompt('拒绝原因（可选）：', '') ?? ''; decide(item.id, 'reject', '', note); };
+          list.append(card);
+        }
+      } catch (error) { document.querySelector('#status').textContent = `连接失败：${error.message}`; }
+    }
+    async function decide(id, decision, edited_message = '', note = '') {
+      const response = await fetch(`/api/requests/${id}/decision`, {method: 'POST', headers: {'Content-Type':'application/json', ...headers()}, body: JSON.stringify({decision, edited_message, note})});
+      if (!response.ok) { alert(`操作失败：HTTP ${response.status}`); return; }
+      await refresh();
+    }
+    refresh(); setInterval(refresh, 2000);
+  </script>
+</body>
+</html>

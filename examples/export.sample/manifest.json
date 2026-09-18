@@ -1,0 +1,11 @@
+{
+  "format_version": 1,
+  "export_id": "sample-no-live-data",
+  "created_at": "2026-01-01T00:00:00+00:00",
+  "teacher_id": "teacher-example",
+  "user_ids": ["student-example"],
+  "request_count": 0,
+  "contains_passwords": false,
+  "contains_provider_keys": false,
+  "sample": true
+}

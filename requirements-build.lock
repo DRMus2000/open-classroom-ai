@@ -1,0 +1,2 @@
+# Build/test dependencies are intentionally separate from the portable runtime.
+pytest==9.1.1

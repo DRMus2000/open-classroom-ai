@@ -1,0 +1,39 @@
+open-classroom-ai
+=================
+
+This repository is a classroom approval / quota / bridge integration that works
+with Open WebUI. Original classroom service, bridge, Pipe/Filter, teacher and
+student UI, scripts, and docs in this repository are licensed under the MIT
+License (see LICENSE).
+
+Third-party components
+----------------------
+
+### Open WebUI
+
+Portable release packages built from this project embed Open WebUI 0.11.2 and a
+compatible Python runtime. Open WebUI is copyright Open WebUI Inc. and is
+redistributed under the Open WebUI License (with earlier commits under MIT /
+BSD-3-Clause as described in its multi-license notice).
+
+License texts included with this repository:
+
+- third_party/open-webui/LICENSE.txt
+- third_party/open-webui/LICENSE_NOTICE.txt
+
+Upstream project: https://github.com/open-webui/open-webui
+
+Redistributors of binary packages that include Open WebUI must:
+
+1. Keep the Open WebUI copyright notice, license text, and multi-license notice.
+2. Not remove or replace Open WebUI branding except as allowed by that license
+   (including the end-user count / written permission exceptions).
+3. Not use the Open WebUI name to imply endorsement without permission.
+
+This project does not claim to be Open WebUI, and does not grant any rights to
+Open WebUI beyond those in Open WebUI's own license.
+
+### markdown-it
+
+The student chat page vendors markdown-it. See
+web/student/vendor/markdown-it-LICENSE.txt.
