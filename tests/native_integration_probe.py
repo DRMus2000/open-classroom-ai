@@ -80,6 +80,9 @@ async def main():
         r=await c.post('/api/v1/auths/signin',json={'email':teacher.email,'password':'Teacher-test-123'})
         assert r.status_code==200,(r.status_code,r.text[:300])
         th={'Authorization':'Bearer '+r.json()['token']}
+        r=await c.post('/api/v1/files/?process=true',headers=th,files={'file':('teacher.py',b'print("teacher attachment")','text/plain')})
+        assert r.status_code==200,(r.status_code,r.text[:300])
+        teacher_file_id=r.json()['id']
         from open_webui.models.config import Config
         await Config.upsert({'openai.enable': False, 'ollama.enable': False})
         code=(pathlib.Path(__file__).resolve().parents[1]/'app/openwebui_classroom_pipe.py').read_text(encoding='utf-8-sig')
@@ -117,11 +120,13 @@ async def main():
             assert service.get_request(pending['id'])['status']=='completed'
             r=await c.post('/api/chat/completions', headers=th, json={
                 'id':'teacher-answer-1', 'model':'classroom_pipe',
+                'files':[{'id':teacher_file_id,'type':'file'}],
                 'messages':[{'role':'user','content':'teacher question'}],
                 'user_message':{'id':'teacher-user-1','role':'user','content':'teacher question'}, 'stream':True})
             assert r.status_code==200, (r.status_code,r.text[:700])
             assert len(upstream.calls)==2, r.text[:700]
             assert upstream.calls[-1]['request_id'].startswith('teacher-')
+            assert 'teacher attachment' in json.dumps(upstream.calls[-1]['payload'])
             assert 'Approved native answer' in r.text and '[DONE]' in r.text, r.text[:700]
             assert service.db.query_one('SELECT COUNT(*) FROM students WHERE user_id=?',(teacher.id,))[0]==0
             print('NATIVE_TEACHER_CHAT_OK')
@@ -147,7 +152,7 @@ if os.environ.get('CLASSROOM_PROBE_MIGRATION') == '1':
     archive=ClassroomExporter(migrated,destination/'exports').export('probe-teacher')
     with zipfile.ZipFile(archive) as bundle:
         files=[name for name in bundle.namelist() if name.startswith('legacy/attachments/')]
-        assert len(files)==1
-        assert bundle.read(files[0])==b'print("never executed")'
+        assert len(files)==2
+        assert {bundle.read(name) for name in files}=={b'print("never executed")', b'print("teacher attachment")'}
     migrated.db.close()
     print('NATIVE_LEGACY_FILE_MIGRATION_EXPORT_OK')

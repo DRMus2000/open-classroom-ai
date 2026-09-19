@@ -26,7 +26,8 @@ class TeacherChat:
             stored = self.service.attachments.get(ref['id'], user_id=user_id)
             if stored['sha256'].lower() != ref['sha256']:
                 raise ForbiddenError('附件内容校验失败')
-        payload['attachments'] = [ref['id'] for ref in payload['attachments']]
+        attachment_ids = [ref['id'] for ref in payload['attachments']]
+        payload['attachments'] = attachment_ids
         payload = self.service.materialize_provider_payload(None, payload)
         with self._active_lock:
             if user_id in self.active or len(self.active) >= self.service.max_concurrency:
@@ -45,6 +46,10 @@ class TeacherChat:
             pending = None
             sentinel = object()
             try:
+                if attachment_ids:
+                    with self.service.db.transaction() as db:
+                        for aid in attachment_ids:
+                            db.execute("UPDATE attachments SET retention_class='permanent' WHERE id=? AND owner_user_id=?", (aid, user_id))
                 iterator = iter(upstream.generate(payload, request_id=request_id))
                 while True:
                     pending = asyncio.create_task(asyncio.to_thread(next, iterator, sentinel))

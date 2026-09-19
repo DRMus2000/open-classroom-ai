@@ -11,11 +11,12 @@ def test_parse_audit_decision_accepts_embedded_json():
     assert decision == 'reject' and reason == '越狱'
 
 
-def test_parse_audit_decision_accepts_think_fence_and_loose_fields():
+def test_parse_audit_decision_accepts_think_fence_but_rejects_loose_fields():
     fenced = '<think>分析中</think>\n```json\n{"decision":"approve","reason":"调试报错"}\n```'
     assert parse_audit_decision(fenced) == ('approve', '调试报错')
     loose = '结论如下 "decision": "reject", "reason": "与学习无关"'
-    assert parse_audit_decision(loose) == ('reject', '与学习无关')
+    with pytest.raises(ValueError):
+        parse_audit_decision(loose)
 
 
 def test_review_mode_default_and_set(service):
@@ -80,7 +81,6 @@ def test_ai_auditor_fallback_on_bad_json(service):
 
 def test_ai_auditor_retries_dns_then_approves(service, monkeypatch):
     from classroom.app.classroom_service.worker import UpstreamError
-    monkeypatch.setattr('classroom.app.classroom_service.ai_auditor.time.sleep', lambda *_: None)
     service.set_ready(True)
     service.set_review_mode('teacher-1', 'ai', service.get_review_mode()['version'])
     result = service.submit('student-1', 'op-ai-dns', {
@@ -106,7 +106,6 @@ def test_ai_auditor_retries_dns_then_approves(service, monkeypatch):
 
 
 def test_ai_auditor_does_not_retry_bad_json(service, monkeypatch):
-    monkeypatch.setattr('classroom.app.classroom_service.ai_auditor.time.sleep', lambda *_: None)
     service.set_ready(True)
     service.set_review_mode('teacher-1', 'ai', service.get_review_mode()['version'])
     result = service.submit('student-1', 'op-ai-json', {

@@ -31,7 +31,7 @@ def build(runtime, output):
             if path.name in {'.env', '.webui_secret_key', 'bridge.key'}:
                 raise ValueError('unexpected credential file in release input')
             selected[(Path(prefix) / relative).as_posix()] = path
-    for filename in ('README.md', 'TEACHER_GUIDE_CN.md', 'IMPLEMENTATION_STATUS.md', 'compatibility.json', 'requirements-runtime.lock'):
+    for filename in ('README.md', 'TEACHER_GUIDE_CN.md', 'IMPLEMENTATION_STATUS.md', 'PATCH_2.1.8_README.md', 'compatibility.json', 'requirements-runtime.lock'):
         selected[filename] = source / filename
     for filename in ('Open WebUI LICENSE.txt', 'Open WebUI LICENSE NOTICE.txt'):
         candidate = runtime.parent / filename

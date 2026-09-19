@@ -16,7 +16,7 @@ import time
 from typing import Any, Iterator
 
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 
 SCHEMA = r"""
@@ -335,7 +335,50 @@ CREATE TABLE ai_audit_turns (
 CREATE INDEX idx_ai_audit_created ON ai_audit_turns(created_at DESC, id DESC);
 CREATE INDEX idx_requests_review_channel ON review_requests(status, review_channel, submitted_at);
 """
-MIGRATIONS = {1: SCHEMA, 2: SCHEMA_V2, 3: SCHEMA_V3, 4: SCHEMA_V4}
+SCHEMA_V5 = r"""
+CREATE TABLE attachments_v5 (
+    id TEXT PRIMARY KEY,
+    owner_user_id TEXT NOT NULL REFERENCES security_states(user_id),
+    request_id TEXT,
+    source_file_id TEXT,
+    original_filename TEXT NOT NULL,
+    media_type TEXT NOT NULL,
+    size_bytes INTEGER NOT NULL CHECK(size_bytes >= 0),
+    sha256 TEXT NOT NULL,
+    blob_ref TEXT NOT NULL,
+    normalized_ref TEXT,
+    text_encoding TEXT,
+    image_width INTEGER,
+    image_height INTEGER,
+    created_at TEXT NOT NULL,
+    retention_class TEXT NOT NULL DEFAULT 'permanent'
+        CHECK(retention_class IN ('temporary','permanent'))
+);
+INSERT INTO attachments_v5 SELECT * FROM attachments;
+CREATE TABLE native_attachments_v5 (
+    user_id TEXT NOT NULL REFERENCES security_states(user_id),
+    native_file_id TEXT NOT NULL,
+    attachment_id TEXT NOT NULL REFERENCES attachments_v5(id),
+    PRIMARY KEY(user_id,native_file_id)
+);
+INSERT INTO native_attachments_v5 SELECT * FROM native_attachments;
+CREATE TABLE native_attachment_copies_v5 (
+    user_id TEXT NOT NULL,
+    operation_id TEXT NOT NULL,
+    native_file_id TEXT NOT NULL,
+    attachment_id TEXT NOT NULL REFERENCES attachments_v5(id),
+    PRIMARY KEY(user_id,operation_id,native_file_id)
+);
+INSERT INTO native_attachment_copies_v5 SELECT * FROM native_attachment_copies;
+DROP TABLE native_attachment_copies;
+DROP TABLE native_attachments;
+DROP TABLE attachments;
+ALTER TABLE attachments_v5 RENAME TO attachments;
+ALTER TABLE native_attachments_v5 RENAME TO native_attachments;
+ALTER TABLE native_attachment_copies_v5 RENAME TO native_attachment_copies;
+CREATE INDEX idx_attachments_request ON attachments(request_id, created_at);
+"""
+MIGRATIONS = {1: SCHEMA, 2: SCHEMA_V2, 3: SCHEMA_V3, 4: SCHEMA_V4, 5: SCHEMA_V5}
 
 
 def json_dumps(value: Any) -> str:

@@ -2,31 +2,66 @@
 (() => {
   const enabled = document.querySelector('#guest-enabled');
   const urlInput = document.querySelector('#guest-url');
+  const originInput = document.querySelector('#guest-origin');
+  const origins = document.querySelector('#guest-origins');
   const status = document.querySelector('#guest-status');
   const copyBtn = document.querySelector('#guest-copy');
   const rotateBtn = document.querySelector('#guest-rotate');
   let config = null;
   let saving = false;
   let lastTokenUrl = '';
+  let sharePath = '';
 
-  function absoluteShare(path) {
-    if (!path) return '';
-    try { return new URL(path, location.origin).href; } catch (_) { return path; }
+  function validOrigin(value) {
+    const url = new URL(value);
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password ||
+        url.pathname !== '/' || url.search || url.hash ||
+        /^(localhost\.?|127(?:\.\d+){3}|\[::1\]|0\.0\.0\.0|\[::\])$/i.test(url.hostname)) {
+      throw new Error('请填写学生可访问的教师机地址，不能使用 localhost 或 127.0.0.1。');
+    }
+    return url.origin;
+  }
+
+  function configureOrigins(hosts) {
+    origins.replaceChildren();
+    const current = new URL(location.origin);
+    for (const host of hosts || []) {
+      const candidate = new URL(current.origin);
+      candidate.hostname = host;
+      const option = document.createElement('option');
+      option.value = candidate.origin;
+      origins.append(option);
+    }
+    if (!originInput.value) {
+      try { originInput.value = validOrigin(current.origin); }
+      catch (_) { originInput.value = origins.firstElementChild?.value || ''; }
+    }
   }
 
   function showUrl(pathOrUrl) {
-    const href = pathOrUrl && pathOrUrl.startsWith('http') ? pathOrUrl : absoluteShare(pathOrUrl);
-    lastTokenUrl = href || '';
+    sharePath = pathOrUrl || '';
+    let href = '';
+    if (sharePath) {
+      try { href = new URL(sharePath, validOrigin(originInput.value)).href; }
+      catch (_) {
+        lastTokenUrl = '';urlInput.value = '';copyBtn.hidden = true;
+        status.textContent = '链接已生成，请先填写学生可访问的教师机局域网地址。';
+        return false;
+      }
+    }
+    lastTokenUrl = href;
     urlInput.value = href || (config && config.enabled && config.has_token
       ? '已开启。刷新后不显示明文令牌，需要新链接请点「重新生成链接」。'
       : '');
     copyBtn.hidden = !href;
+    return true;
   }
 
   async function read() {
     status.textContent = '正在读取…';
     try {
       config = await call('/admin/guest-access');
+      configureOrigins(config.share_hosts);
       enabled.checked = !!config.enabled;
       if (!lastTokenUrl) showUrl('');
       status.textContent = config.enabled
@@ -54,8 +89,9 @@
       });
       config = result;
       if (result.share_url_path || result.token) {
-        showUrl(result.share_url_path || ('/classroom/guest/?t=' + result.token));
-        status.textContent = '已更新。请立即复制链接；刷新页面后明文不会再次显示。';
+        if (showUrl(result.share_url_path || ('/classroom/guest/?t=' + result.token))) {
+          status.textContent = '已更新。请立即复制链接；刷新页面后明文不会再次显示。';
+        }
       } else {
         lastTokenUrl = '';
         showUrl('');
@@ -75,6 +111,9 @@
   panels.guestLink = { load: read, loaded: false };
   if (activeView === 'settings') { panels.guestLink.loaded = true; read(); }
   enabled.onchange = () => save({ rotate: enabled.checked && !(config && config.has_token) });
+  originInput.oninput = () => {
+    if (sharePath && showUrl(sharePath)) status.textContent = '分享地址已更新，可以复制链接。';
+  };
   rotateBtn.onclick = () => {
     if (!enabled.checked) {
       enabled.checked = true;

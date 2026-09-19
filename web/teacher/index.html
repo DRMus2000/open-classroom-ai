@@ -194,6 +194,10 @@
           <button id="guest-rotate" class="btn">重新生成链接</button>
           <button id="guest-copy" class="btn btn-primary" hidden>复制链接</button>
         </div>
+        <label for="guest-origin">学生可访问的教师机地址</label>
+        <input id="guest-origin" class="input" list="guest-origins" style="width:100%;margin-top:8px" placeholder="例如 http://192.168.1.10:3000">
+        <datalist id="guest-origins"></datalist>
+        <p class="muted">请使用与学生电脑同一局域网的地址，并以 LAN 模式启动。多网卡时可从候选地址中选择。</p>
         <input id="guest-url" class="input" readonly style="width:100%;margin-top:12px" placeholder="开启或重新生成后在此显示链接">
         <p id="guest-status" class="status" role="status"></p>
       </div>
@@ -215,9 +219,9 @@
   </div>
 </dialog>
 
-<script src="app.js?v=ui-fix-20260918e"></script>
+<script src="app.js?v=2.1.8-audit1"></script>
 <script src="system-prompt.js?v=teacher-20260917"></script>
-<script src="guest-link.js?v=teacher-20260917"></script>
+<script src="guest-link.js?v=2.1.8-audit1"></script>
 <script src="review-mode.js?v=ui-fix-20260918b"></script>
 <script src="insights.js?v=insights-20260917"></script>
 </body>

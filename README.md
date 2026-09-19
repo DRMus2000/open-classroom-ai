@@ -4,6 +4,8 @@ Open WebUI 0.11.2 的课堂审批集成：独立审批/额度/执行服务、原
 
 源码仓库：https://github.com/DRMus2000/open-classroom-ai
 
+2.1.8 审计修复补丁（`2.1.8-audit1`）修复审核解析、附件审核、调度、重试恢复、教师上传和访客分享地址。已有 2.1.8 安装参见 [补丁安装说明](PATCH_2.1.8_README.md)，通过 `scripts/Build-Patch.ps1` 构建程序补丁包。
+
 完整便携 ZIP 由 `scripts/Build-Package.ps1` 构建（输出名含版本号，如 `openwebui-classroom-2.1.8-windows-x64.zip`），含 Python 3.11.9 与已有完整运行时，不含真实账号、聊天、上传文件或密钥。不要把工作区的 `rehearsal`、旧发行目录或实际 `data` 手动复制进发行包。
 
 ## 文档

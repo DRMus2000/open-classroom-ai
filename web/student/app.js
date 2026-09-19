@@ -5,13 +5,13 @@ const running=r=>r&&['pending','approved_queued','generating'].includes(r.status
 const continuable=r=>r&&['completed','stopped_by_student_after_output'].includes(r.status);
 const newId=()=>Array.from(crypto.getRandomValues(new Uint8Array(16)),b=>b.toString(16).padStart(2,'0')).join('');
 const records=new Map();let me=null,chat=newId(),thread=[],parent=null,active=null,pending=null,storageKey=null,files=[],sending=false,cursor=null,loadingThread=false,opening=0;
-let eventAfter=0,streamText='',lastMeAt=0,lastStatusAt=0,mdTimer=null;
+let eventAfter=0,streamText='',streamId=null,lastMeAt=0,lastStatusAt=0,mdTimer=null;
 const headers=()=>{const h={'Content-Type':'application/json'},token=localStorage.getItem('token');if(token)h.Authorization='Bearer '+token;return h};
 async function call(path,options={}){const response=await fetch(api+path,{...options,headers:{...headers(),...options.headers}});const data=await response.json().catch(()=>({}));if(!response.ok){const e=new Error(data.error?.message||data.detail||'连接暂时不可用，请稍后重试');e.status=response.status;throw e}return data}
 function node(tag,cls,text){const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n}
 function status(text='',error=false){$('#status').textContent=text;$('#status').className='status'+(error?' error':'')}
 function question(r){const m=(r.original_payload?.messages||[]).filter(m=>m.role==='user').at(-1);return typeof m?.content==='string'?m.content:(m?.content||[]).filter(p=>p.type==='text').map(p=>p.text).join('\n')}
-function statusLabel(r){if(!r)return '';if(r.status==='pending'&&(r.review_channel==='ai'||me?.review_mode==='ai'))return labels.pending_ai;if(r.status==='rejected'&&r.review_channel==='ai')return labels.rejected_ai;return labels[r.status]||r.status}
+function statusLabel(r){if(!r)return '';if(r.status==='pending'&&r.review_channel==='ai')return labels.pending_ai;if(r.status==='rejected'&&r.review_channel==='ai')return labels.rejected_ai;return labels[r.status]||r.status}
 const md=window.markdownit({html:false,linkify:false,breaks:true});
 md.renderer.rules.image=(tokens,index)=>'<span class="attachment-tag">图片：'+md.utils.escapeHtml(tokens[index].content||'图片')+'</span>';
 md.renderer.rules.fence=(tokens,index)=>{const t=tokens[index],lang=(t.info||'').trim().split(/\s+/)[0];return '<div class="codeblock"><div class="codebar"><span>'+md.utils.escapeHtml(lang||'代码')+'</span><button type="button" class="copy-code">复制</button></div><pre><code>'+md.utils.escapeHtml(t.content)+'</code></pre></div>'};
@@ -75,18 +75,18 @@ function renderHistory(){
 }
 async function history(reset=false){if(reset)cursor=null;const data=await call('/requests?limit=20'+(cursor?'&cursor='+encodeURIComponent(cursor):''));for(const r of data.requests)records.set(r.id,r);const last=data.requests.at(-1);cursor=last?last.submitted_at+'|'+last.id:null;$('#more').hidden=data.requests.length<20;renderHistory()}
 function closeSidebar(){$('#sidebar').classList.remove('open');$('#shade').classList.remove('open')}
-function resetStream(){eventAfter=0;streamText='';lastStatusAt=0;if(mdTimer){clearTimeout(mdTimer);mdTimer=null}}
+function resetStream(){eventAfter=0;streamText='';streamId=active;lastStatusAt=0;if(mdTimer){clearTimeout(mdTimer);mdTimer=null}}
 async function openThread(id){
   if(sending)return;const turn=++opening;loadingThread=true;updateControls();
   try{const chain=[],seen=new Set();let next=id;
     while(next&&chain.length<50){if(seen.has(next))break;seen.add(next);const r=await call('/requests/'+encodeURIComponent(next));records.set(r.id,r);chain.unshift(r);next=r.parent_request_id}
     if(turn!==opening)return;thread=chain;const tail=chain.at(-1);chat=tail.chat_id||tail.id;parent=continuable(tail)?tail.id:null;
     if(pending&&tail.client_operation_id===pending.key){pending=null;rememberPending()}
-    if(active===tail.id&&tail.status==='generating'){streamText=tail.output_text||'';eventAfter=tail.output_seq||0}else resetStream();
+    if(active===tail.id&&tail.status==='generating'){streamId=tail.id;streamText=tail.output_text||'';eventAfter=tail.output_seq||0}else if(!active)resetStream();
     renderThread(true);closeSidebar();await acknowledge(tail);
   }finally{if(turn===opening){loadingThread=false;updateControls()}}
 }
-async function refreshMe(){me=await call('/me');active=me.active_request?.id||null;lastMeAt=Date.now();
+async function refreshMe(){me=await call('/me');if(!active&&me.active_request?.id){active=me.active_request.id;resetStream()}lastMeAt=Date.now();
   const name=me.user.roster_name||'同学';$('#student-name').textContent=name;$('#profile-icon').textContent=name.slice(0,1);
   renderQuota();
   $('#change').hidden=!me.must_change_password;$('#compose').hidden=me.must_change_password;$('#scroll').hidden=me.must_change_password;$('#newchat').hidden=me.must_change_password;
@@ -95,9 +95,12 @@ async function refreshMe(){me=await call('/me');active=me.active_request?.id||nu
 const acked=new Map();
 async function acknowledge(r){if(!r?.output_seq||document.visibilityState!=='visible'||!thread.some(x=>x.id===r.id))return;if((acked.get(r.id)||0)>=r.output_seq)return;await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));if(document.visibilityState==='visible'&&thread.some(x=>x.id===r.id)){await call('/requests/'+r.id+'/delivery',{method:'POST',body:JSON.stringify({seq:r.output_seq})});acked.set(r.id,r.output_seq)}}
 async function pullEvents(id){
+  if(streamId!==id)resetStream();
   const data=await call('/requests/'+id+'/events?after_seq='+eventAfter);
+  if(active!==id||streamId!==id)return false;
   let changed=false,ended=false;
   for(const ev of data.events||[]){
+    if(ev.seq<=eventAfter)continue;
     eventAfter=Math.max(eventAfter,ev.seq||0);
     if(ev.event_type==='delta'&&typeof ev.payload?.text==='string'&&ev.payload.text){streamText+=ev.payload.text;changed=true}
     if(ev.event_type==='completed'||ev.event_type==='interrupted'||ev.event_type==='error'||ev.event_type==='stopped')ended=true;
@@ -106,13 +109,13 @@ async function pullEvents(id){
     const index=thread.findIndex(x=>x.id===id);
     if(index>=0){thread[index]={...thread[index],output_text:streamText,output_seq:eventAfter,status:'generating'};records.set(id,thread[index])}
     schedulePaint();
-    acknowledge({id,output_seq:eventAfter});
+    acknowledge({id,output_seq:eventAfter}).catch(e=>status(e.message,true));
   }
   return ended;
 }
 async function finishActive(id,r){
   records.set(r.id,r);const index=thread.findIndex(x=>x.id===id);
-  if(index>=0){thread[index]=r;if(r.output_text)streamText=r.output_text;renderThread();await acknowledge(r)}
+  if(index>=0){thread[index]=r;streamText=r.output_text||'';renderThread();await acknowledge(r)}
   if(!running(r)){active=null;resetStream();if(index>=0&&index===thread.length-1&&continuable(r))parent=r.id;await refreshMe();await history(true);if(!me.classroom_paused)status('')}
 }
 async function poll(){try{if(!me?.must_change_password){
@@ -122,21 +125,19 @@ async function poll(){try{if(!me?.must_change_password){
     const known=records.get(id);
     if(known?.status==='generating'){
       const ended=await pullEvents(id);
-      if(ended||(lastStatusAt&&Date.now()-lastStatusAt>1500)){
+      if(ended||Date.now()-lastStatusAt>1500){
         lastStatusAt=Date.now();
         const r=await call('/requests/'+id);records.set(r.id,r);
         if(r.status!=='generating')await finishActive(id,r);
       }
     }else{
       const r=await call('/requests/'+id);records.set(r.id,r);const index=thread.findIndex(x=>x.id===id);
-      if(index>=0){
-        if(r.status==='generating'){
+      if(r.status==='generating'){
           lastStatusAt=Date.now();
-          thread[index]={...thread[index],...r,output_text:streamText||''};
+          if(index>=0)thread[index]={...thread[index],...r,output_text:streamText||''};
           await pullEvents(id);
-        }else{
+      }else{
           await finishActive(id,r);
-        }
       }
     }
   }else if(me){await refreshMe();if(active&&thread.length===0)await openThread(active)}
@@ -157,7 +158,7 @@ $('#prompt').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.pr
 $('#prompt').oninput=()=>{resizePrompt();updateCharCount()};
 $('#attach').onclick=()=>$('#files').click();
 $('#files').onchange=()=>{const next=[...files,...$('#files').files];$('#files').value='';if(next.length>5||next.reduce((sum,f)=>sum+f.size,0)>10*1024*1024){status('最多上传 5 个附件，合计不超过 10 MiB。',true);return}files=next;renderFiles()};
-$('#stop').onclick=async()=>{if(!active)return;$('#stop').disabled=true;try{const r=await call('/requests/'+active+'/cancel',{method:'POST',body:'{}'});records.set(r.id,r);const i=thread.findIndex(x=>x.id===r.id);if(i>=0){thread[i]=r;if(continuable(r))parent=r.id;renderThread()}resetStream();await refreshMe()}catch(e){status(e.message,true)}finally{$('#stop').disabled=false}};
+$('#stop').onclick=async()=>{if(!active)return;$('#stop').disabled=true;try{const r=await call('/requests/'+active+'/cancel',{method:'POST',body:'{}'});await finishActive(r.id,r);await refreshMe()}catch(e){status(e.message,true)}finally{$('#stop').disabled=false}};
 $('#newchat').onclick=()=>{if(active||sending)return;opening++;chat=newId();parent=null;thread=[];pending=null;rememberPending();files=[];renderFiles();$('#prompt').value='';updateCharCount();status('');resetStream();renderThread();updateControls();closeSidebar();$('#prompt').focus()};
 $('#changebtn').onclick=async()=>{$('#changebtn').disabled=true;try{await call('/account/change-initial-password',{method:'POST',body:JSON.stringify({current_password:$('#current').value,new_password:$('#newpass').value})});$('#current').value='';$('#newpass').value='';localStorage.removeItem('token');location.replace('/auth')}catch(e){$('#change-status').textContent=e.message}finally{$('#changebtn').disabled=false}};
 $('#menu').onclick=()=>{$('#sidebar').classList.add('open');$('#shade').classList.add('open')};$('#shade').onclick=closeSidebar;$('#close-menu').onclick=closeSidebar;

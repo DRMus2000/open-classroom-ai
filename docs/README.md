@@ -5,6 +5,7 @@
 - [CLASSROOM_AI_REQUIREMENTS.md](CLASSROOM_AI_REQUIREMENTS.md)：整合后的需求与验收标准（与当前产品行为对齐）。
 - [../TEACHER_GUIDE_CN.md](../TEACHER_GUIDE_CN.md)：教师端安装、使用与运维。
 - [../IMPLEMENTATION_STATUS.md](../IMPLEMENTATION_STATUS.md)：当前版本实现范围与验证边界。
+- [../PATCH_2.1.8_README.md](../PATCH_2.1.8_README.md)：2.1.8 审计修复补丁安装、数据库升级和回滚说明。
 - [../README.md](../README.md)：仓库说明与许可入口。
 
 ## 历史材料（冻结，不代表现状）

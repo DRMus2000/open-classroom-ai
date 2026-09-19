@@ -1,5 +1,5 @@
 """One process owns dispatch, recovery and the classroom database lifecycle."""
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, wait
 from pathlib import Path
 import threading
 from .clock import iso, parse_iso
@@ -52,6 +52,8 @@ class ClassroomRuntime:
         self.failure = None
         self.futures = set()
         self.pool = None
+        self.audit_pool = None
+        self.audit_future = None
         self.high_water = None
         self.last_cleanup = None
         service.set_ready(False)
@@ -65,6 +67,7 @@ class ClassroomRuntime:
         self.service.quota.expire_pending()
         self.service.sessions.cleanup()
         self.pool = ThreadPoolExecutor(max_workers=self.service.max_concurrency, thread_name_prefix="classroom-executor")
+        self.audit_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="classroom-auditor")
         self.service.set_ready(True)
         self.thread = threading.Thread(target=self._loop, name="classroom-scheduler", daemon=True)
         self.thread.start()
@@ -79,7 +82,10 @@ class ClassroomRuntime:
                     self.service.attachments.cleanup_temporary()
                     self.service.sessions.cleanup()
                     self.last_cleanup = now
-                self.auditor.tick()
+                if self.audit_future is None or self.audit_future.done():
+                    if self.audit_future is not None:
+                        self.audit_future.result()
+                    self.audit_future = self.audit_pool.submit(self.auditor.tick)
                 for future in tuple(self.futures):
                     if future.done():
                         future.result()
@@ -112,9 +118,16 @@ class ClassroomRuntime:
 
     def close(self):
         self.stop_event.set()
+        self.auditor.stop()
         self.service.set_ready(False)
         if self.thread:
             self.thread.join()
+        if self.audit_pool:
+            while self.audit_future is not None and not self.audit_future.done():
+                # Cancellation may initially precede transport registration.
+                self.auditor.stop()
+                wait({self.audit_future}, timeout=0.05)
+            self.audit_pool.shutdown(wait=True)
         rows = self.service.db.query_all("SELECT id,user_id FROM review_requests WHERE status='generating'")
         for row in rows:
             self.service.cancel(row["id"], row["user_id"], source="maintenance")

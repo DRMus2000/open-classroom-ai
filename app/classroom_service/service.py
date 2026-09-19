@@ -505,6 +505,41 @@ class ClassroomService:
         )
         if len(current_text) > 1000:
             raise ValidationError("提问不能超过 1000 字")
+        attachment_refs = normalized.get("attachments", [])
+        expected_attachment_ids = [x["id"] for x in attachment_refs]
+        if attachment_ids is None:
+            attachment_ids = expected_attachment_ids
+        if not isinstance(attachment_ids, list) or attachment_ids != expected_attachment_ids:
+            raise ValidationError("attachment references and attachment_ids do not match")
+        associations = {"chat_id": chat_id, "user_message_id": user_message_id,
+                        "assistant_message_id": assistant_message_id, "parent_request_id": parent_request_id}
+        if any(value is not None and (not isinstance(value, str) or len(value) > 200) for value in associations.values()):
+            raise ValidationError("invalid chat or message association")
+        client_payload = {**normalized, "messages": list(normalized["messages"])}
+        digest = "client-v2:" + payload_digest(user_id, operation_id, {
+            **client_payload, "attachment_ids": attachment_ids, **associations})
+
+        def retry(existing, db=None):
+            expected = digest
+            if not existing["client_payload_digest"].startswith("client-v2:"):
+                # Pre-patch requests hashed server context. Reconstruct that
+                # context from the immutable original, never today's settings.
+                original = self.db.query_one("SELECT payload_json FROM snapshots WHERE id=?", (existing["original_snapshot_id"],)) if db is None else db.execute("SELECT payload_json FROM snapshots WHERE id=?", (existing["original_snapshot_id"],)).fetchone()
+                saved = json_loads(original[0])
+                for ref in attachment_refs:
+                    stored = self.db.query_one("SELECT owner_user_id,sha256 FROM attachments WHERE id=?", (ref["id"],)) if db is None else db.execute("SELECT owner_user_id,sha256 FROM attachments WHERE id=?", (ref["id"],)).fetchone()
+                    if not stored or stored["owner_user_id"] != user_id or stored["sha256"].lower() != ref["sha256"].lower():
+                        raise ConflictError("attachment digest is invalid", code="ATTACHMENT_DIGEST_CONFLICT")
+                expected = payload_digest(user_id, operation_id, {
+                    **client_payload, "messages": saved["messages"][:-1] + client_payload["messages"],
+                    "attachments": [], "attachment_ids": attachment_ids, **associations})
+            if existing["client_payload_digest"] != expected:
+                raise ConflictError("同一操作标识对应了不同内容", code="OPERATION_PAYLOAD_CONFLICT", request_id=existing["id"])
+            return self._request_public(existing, db)
+
+        existing = self.db.query_one("SELECT * FROM review_requests WHERE user_id=? AND client_operation_id=?", (user_id, operation_id))
+        if existing:
+            return retry(existing)
         if parent_request_id:
             parent = self.get_request(parent_request_id, user_id=user_id)
             if parent["chat_id"] != chat_id or parent["status"] not in {"completed", "stopped_by_student_after_output"}:
@@ -524,12 +559,6 @@ class ClassroomService:
             normalized['messages'].insert(0, {'role': 'system', 'content': system_prompt})
         if normalized["model"] not in self.allowed_models:
             raise ForbiddenError("学生只能使用课堂允许的模型", code="MODEL_NOT_ALLOWED")
-        attachment_refs = normalized.get("attachments", [])
-        expected_attachment_ids = [x["id"] for x in attachment_refs]
-        if attachment_ids is None:
-            attachment_ids = expected_attachment_ids
-        if not isinstance(attachment_ids, list) or attachment_ids != expected_attachment_ids:
-            raise ValidationError("attachment references and attachment_ids do not match")
         for ref in attachment_refs:
             stored = self.db.query_one("SELECT owner_user_id,sha256 FROM attachments WHERE id=?", (ref["id"],))
             if not stored or stored["owner_user_id"] != user_id:
@@ -537,11 +566,6 @@ class ClassroomService:
             if stored["sha256"].lower() != ref["sha256"].lower():
                 raise ConflictError("attachment content changed or digest is invalid", code="ATTACHMENT_DIGEST_CONFLICT")
         normalized["attachments"] = []
-        associations = {"chat_id": chat_id, "user_message_id": user_message_id,
-                        "assistant_message_id": assistant_message_id, "parent_request_id": parent_request_id}
-        if any(value is not None and (not isinstance(value, str) or len(value) > 200) for value in associations.values()):
-            raise ValidationError("invalid chat or message association")
-        digest = payload_digest(user_id, operation_id, {**normalized, "attachment_ids": attachment_ids, **associations})
         now = self.now()
         # Submission is also a lifecycle checkpoint, so a teacher who keeps
         # the app open across midnight cannot leave yesterday's reservation in
@@ -562,9 +586,7 @@ class ClassroomService:
                 raise ForbiddenError("课堂 AI 当前已暂停", code="CLASSROOM_PAUSED")
             existing = db.execute("SELECT * FROM review_requests WHERE user_id=? AND client_operation_id=?", (user_id, operation_id)).fetchone()
             if existing:
-                if existing["client_payload_digest"] != digest:
-                    raise ConflictError("同一操作标识对应了不同内容", code="OPERATION_PAYLOAD_CONFLICT", request_id=existing["id"])
-                return self._request_public(existing, db)
+                return retry(existing, db)
             active = db.execute("SELECT id FROM review_requests WHERE user_id=? AND status IN ('pending','approved_queued','generating')", (user_id,)).fetchone()
             if active:
                 raise ConflictError("该学生已有活动请求", code="ACTIVE_REQUEST_EXISTS", request_id=active[0])

@@ -165,7 +165,8 @@ def create_app(service: ClassroomService, *, internal_auth: InternalAuthenticato
     @app.get('/api/classroom/v1/admin/guest-access')
     async def get_guest_access(request: Request):
         p = await principal(request); require_teacher(p)
-        return service.get_guest_access()
+        from .network import share_hosts
+        return {**service.get_guest_access(), "share_hosts": await asyncio.to_thread(share_hosts)}
 
     @app.put('/api/classroom/v1/admin/guest-access')
     async def update_guest_access(request: Request):

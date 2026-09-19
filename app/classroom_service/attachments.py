@@ -72,7 +72,7 @@ class AttachmentStore:
         if not isinstance(content, (bytes, bytearray)):
             raise ValidationError("attachment content must be bytes")
         content = bytes(content)
-        pending = self.db.query_one("SELECT COUNT(*),COALESCE(SUM(size_bytes),0) FROM attachments WHERE owner_user_id=? AND request_id IS NULL", (user_id,))
+        pending = self.db.query_one("SELECT COUNT(*),COALESCE(SUM(size_bytes),0) FROM attachments WHERE owner_user_id=? AND request_id IS NULL AND retention_class='temporary'", (user_id,))
         if pending[0] >= 30 or pending[1] + len(content) > 30 * 1024 * 1024:
             raise ValidationError("temporary attachment allowance exceeded", status=429)
         suffix = Path(filename).suffix.lower()
@@ -111,13 +111,13 @@ class AttachmentStore:
         os.replace(temp, absolute)
         now_text = iso(self._now())
         with self.db.transaction() as db:
-            pending = db.execute("SELECT COUNT(*),COALESCE(SUM(size_bytes),0) FROM attachments WHERE owner_user_id=? AND request_id IS NULL", (user_id,)).fetchone()
+            pending = db.execute("SELECT COUNT(*),COALESCE(SUM(size_bytes),0) FROM attachments WHERE owner_user_id=? AND request_id IS NULL AND retention_class='temporary'", (user_id,)).fetchone()
             if pending[0] >= 30 or pending[1] + len(content) > 30 * 1024 * 1024:
                 absolute.unlink(missing_ok=True)
                 raise ValidationError("temporary attachment allowance exceeded", status=429)
-            if not db.execute("SELECT 1 FROM students WHERE user_id=?", (user_id,)).fetchone():
+            if not db.execute("SELECT 1 FROM security_states WHERE user_id=?", (user_id,)).fetchone():
                 absolute.unlink(missing_ok=True)
-                raise ForbiddenError("student is not enrolled")
+                raise ForbiddenError("attachment owner is not registered")
             db.execute(
                 """INSERT INTO attachments
                 (id,owner_user_id,request_id,original_filename,media_type,size_bytes,sha256,blob_ref,text_encoding,image_width,image_height,created_at,retention_class)

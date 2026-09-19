@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import re
 import threading
-import time
 import uuid
 
 from .clock import iso
@@ -32,11 +31,8 @@ def _retryable_audit_error(exc: BaseException) -> bool:
     return bool(_RETRYABLE_UPSTREAM.search(f"{type(exc).__name__} {exc}"))
 
 
-_JSON_RE = re.compile(r"\{[^{}]*\}")
-_FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)```", re.S | re.I)
-_THINK_RE = re.compile(r"</?(?:think|thinking|reasoning)>", re.I)
-_DECISION_RE = re.compile(r'"decision"\s*:\s*"?(approve|reject)"?', re.I)
-_REASON_RE = re.compile(r'"reason"\s*:\s*"((?:\\.|[^"\\])*)"')
+_THINK_RE = re.compile(r"<(\/)?(think|thinking|reasoning)>", re.I)
+MAX_AUDIT_CONTEXT = 40_000
 
 
 def extract_question_text(payload: dict | None) -> str:
@@ -89,6 +85,8 @@ def _json_objects(text: str) -> list[str]:
                     found.append(text[i:j + 1])
                     i = j
                     break
+        else:
+            raise ValueError("unfinished audit JSON object")
         i += 1
     return found
 
@@ -107,43 +105,38 @@ def parse_audit_decision(raw: str) -> tuple[str, str]:
     text = (raw or "").strip()
     if not text:
         raise ValueError("empty audit response")
-    blobs = [text]
-    stripped = _THINK_RE.sub(" ", text)
-    if stripped.strip() and stripped != text:
-        blobs.append(stripped.strip())
-    for match in _FENCE_RE.finditer(text):
-        blob = (match.group(1) or "").strip()
-        if blob:
-            blobs.append(blob)
-    for blob in list(blobs):
-        blobs.extend(_json_objects(blob))
-        simple = _JSON_RE.search(blob)
-        if simple:
-            blobs.append(simple.group(0))
-    seen: set[str] = set()
-    for blob in blobs:
-        if blob in seen:
-            continue
-        seen.add(blob)
-        try:
-            parsed = _decision_from_mapping(json.loads(blob))
-        except json.JSONDecodeError:
-            continue
-        if parsed:
-            return parsed
-    decision_match = _DECISION_RE.search(text)
-    if decision_match:
-        decision = decision_match.group(1).lower()
-        reason_match = _REASON_RE.search(text)
-        if reason_match:
-            try:
-                reason = json.loads('"' + reason_match.group(1) + '"')
-            except json.JSONDecodeError:
-                reason = reason_match.group(1)
+    # Discard the entire reasoning block, not merely its tags. Never choose
+    # between competing sample/final decisions or accept a partial JSON field.
+    visible, stack, previous = [], [], 0
+    for tag in _THINK_RE.finditer(text):
+        if not stack:
+            visible.append(text[previous:tag.start()])
+        name = tag.group(2).lower()
+        if tag.group(1):
+            if not stack or stack.pop() != name:
+                raise ValueError("unbalanced audit reasoning block")
         else:
-            reason = "通过" if decision == "approve" else "未通过"
-        return decision, str(reason).strip()[:500]
-    raise ValueError("audit response is not JSON")
+            stack.append(name)
+        previous = tag.end()
+    if stack:
+        raise ValueError("unfinished audit reasoning block")
+    visible.append(text[previous:])
+    blobs = _json_objects("".join(visible))
+    if len(blobs) != 1:
+        raise ValueError("audit response must contain exactly one final JSON decision")
+
+    def unique_fields(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("duplicate audit decision field")
+            result[key] = value
+        return result
+
+    parsed = _decision_from_mapping(json.loads(blobs[0], object_pairs_hook=unique_fields))
+    if not parsed:
+        raise ValueError("invalid final audit decision")
+    return parsed
 
 
 class AIAuditor:
@@ -154,12 +147,22 @@ class AIAuditor:
         self.upstream = upstream
         self._lock = threading.Lock()
         self._busy = False
+        self._stopped = threading.Event()
+        self._active_request = None
+
+    def stop(self) -> None:
+        self._stopped.set()
+        with self._lock:
+            active = self._active_request
+        cancel = getattr(self.upstream, "cancel", None)
+        if active and cancel:
+            cancel(active)
 
     def tick(self) -> bool:
         if not self._lock.acquire(blocking=False):
             return False
         try:
-            if self._busy:
+            if self._busy or self._stopped.is_set():
                 return False
             self._busy = True
         finally:
@@ -169,6 +172,7 @@ class AIAuditor:
         finally:
             with self._lock:
                 self._busy = False
+                self._active_request = None
 
     def _run_one(self) -> bool:
         service = self.service
@@ -181,11 +185,18 @@ class AIAuditor:
         request_id = row["id"]
         public = service.get_request(request_id)
         question = extract_question_text(public.get("original_payload"))
-        attachment_count = len(public.get("attachments") or [])
-        user_content = question or "（无文字，仅附件）"
-        if attachment_count:
-            user_content += f"\n[附件数量: {attachment_count}]"
-        user_content = user_content[:4000]
+        try:
+            materialized = service.materialize_provider_payload(request_id, public["original_payload"])
+            conversation = [m for m in materialized["messages"] if m["role"] != "system"]
+            if any(isinstance(m["content"], list) and any(p.get("type") != "text" for p in m["content"])
+                   for m in conversation):
+                raise ValueError("图片内容需要教师查看后审核")
+            user_content = json_dumps({"待审对话（含本次附件全文）": conversation})
+            if len(user_content) > MAX_AUDIT_CONTEXT:
+                raise ValueError("对话或附件过长，需要教师完整审核")
+        except Exception as exc:
+            self._fallback(request_id, row, question, f"AI 审核转教师：{exc}", "")
+            return True
         audit_prompt = service.get_audit_system_prompt()["prompt"]
         session = service.get_ai_audit_session()
         messages = [{"role": "system", "content": audit_prompt}]
@@ -203,6 +214,10 @@ class AIAuditor:
         decision = reason = None
         last_exc = None
         for attempt in range(3):
+            with self._lock:
+                if self._stopped.is_set():
+                    return False
+                self._active_request = f"audit-{request_id}"
             try:
                 raw = "".join(self.upstream.generate(payload, request_id=f"audit-{request_id}"))
                 decision, reason = parse_audit_decision(raw)
@@ -212,7 +227,10 @@ class AIAuditor:
                 last_exc = exc
                 if not _retryable_audit_error(exc) or attempt == 2:
                     break
-                time.sleep(0.5 * (attempt + 1))
+                if self._stopped.wait(0.5 * (attempt + 1)):
+                    return False
+        if self._stopped.is_set():
+            return False
         if last_exc is not None:
             excerpt = re.sub(r"\s+", " ", raw or "").strip()[:160]
             note = f"AI 审核失败：{last_exc}"

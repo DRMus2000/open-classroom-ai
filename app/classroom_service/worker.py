@@ -60,11 +60,8 @@ def _choice_text(choice: dict) -> str:
     delta = choice.get("delta") if isinstance(choice.get("delta"), dict) else {}
     content = _parts_text(message.get("content")) or _parts_text(delta.get("content"))
     reasoning = _parts_text(message.get("reasoning_content")) or _parts_text(delta.get("reasoning_content"))
-    combined = "\n".join(part for part in (content, reasoning) if part).strip()
-    for item in (content, reasoning, combined):
-        if item and '"decision"' in item:
-            return item
-    return content or reasoning or combined
+    # A separate reasoning field must never override a provided final answer.
+    return content or reasoning
 
 
 def _completion_text_from_payload(event: dict) -> str:
@@ -147,14 +144,30 @@ class HttpUpstream:
             "Content-Type": "application/json", "Authorization": f"Bearer {self.api_key_getter()}",
             "X-Classroom-Request-ID": request_id,
         }
-        timeout = httpx.Timeout(self.timeout, read=self.first_output_timeout)
-        try:
-            with httpx.Client(timeout=timeout, transport=self.transport, follow_redirects=False) as client:
-                response = client.post(self.endpoint, content=raw, headers=headers)
-                response.raise_for_status()
-                event = response.json()
-        except Exception as exc:
-            raise _wrap_upstream_exc(exc) from exc
+        async def complete():
+            with self._lock:
+                self._active[request_id] = (asyncio.get_running_loop(), asyncio.current_task())
+            try:
+                timeout = httpx.Timeout(self.timeout, read=self.first_output_timeout)
+                async with httpx.AsyncClient(timeout=timeout, transport=self.transport, follow_redirects=False) as client:
+                    async with asyncio.timeout(min(self.total_timeout, self.first_output_timeout)):
+                        async with client.stream("POST", self.endpoint, content=raw, headers=headers) as response:
+                            response.raise_for_status()
+                            data = bytearray()
+                            async for chunk in response.aiter_bytes():
+                                data.extend(chunk)
+                                if len(data) > self.max_output_bytes + 65536:
+                                    raise UpstreamError("provider response exceeds configured limit")
+                            return json.loads(data)
+            except asyncio.CancelledError as exc:
+                raise UpstreamError("provider execution cancelled") from exc
+            except Exception as exc:
+                raise _wrap_upstream_exc(exc) from exc
+            finally:
+                with self._lock:
+                    self._active.pop(request_id, None)
+
+        event = asyncio.run(complete())
         text = _completion_text_from_payload(event)
         if len(text.encode("utf-8")) > self.max_output_bytes:
             raise UpstreamError("provider answer exceeds configured limit")

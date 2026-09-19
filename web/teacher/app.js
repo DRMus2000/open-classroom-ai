@@ -3,7 +3,7 @@ const $=s=>document.querySelector(s),api='/api/classroom/v1',selected=new Set(),
 let cursor=null,paused=false,busy=false,current=null,adjustment=null,activeView='review';
 const newId=()=>Array.from(crypto.getRandomValues(new Uint8Array(16)),b=>b.toString(16).padStart(2,'0')).join('');
 const headers=()=>{const h={'Content-Type':'application/json'},token=localStorage.getItem('token');if(token)h.Authorization='Bearer '+token;return h};
-async function call(path,opts={}){const r=await fetch(api+path,{...opts,headers:{...headers(),...opts.headers}});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error?.message||j.detail||'请求失败');return j}
+async function call(path,opts={}){const r=await fetch(api+path,{...opts,headers:{...headers(),...opts.headers}});const j=await r.json().catch(()=>({}));if(!r.ok){const e=new Error(j.error?.message||j.detail||'请求失败');e.status=r.status;e.code=j.error?.code;throw e}return j}
 function el(tag,text,cls){const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n}
 function button(text,fn,cls='btn btn-sm'){const b=el('button',text,cls);b.onclick=()=>Promise.resolve().then(fn).catch(error);return b}
 function notify(message,kind='info'){const n=$('#notice');n.textContent=message||'';n.className='notice notice-'+kind;n.hidden=!message;if(message&&kind!=='error'&&typeof setTimeout==='function')setTimeout(()=>{if(n.textContent===message)n.hidden=true},6000)}
@@ -119,7 +119,7 @@ async function queue(reset){
     const head=el('div',undefined,'row-head');head.append(el('strong',studentName(item.user_id)),badge(item.status));
     if(item.review_channel==='ai')head.append(el('span','AI 审','badge badge-generating'));
     else if(item.review_channel==='none')head.append(el('span','免审','badge badge-completed'));
-    else if((item.decision_note||'').includes('AI 审核失败'))head.append(el('span','AI回退','badge badge-interrupted'));
+    else if((item.decision_note||'').startsWith('AI 审核'))head.append(el('span','AI回退','badge badge-interrupted'));
     head.append(el('span',formatTime(item.submitted_at),'time'));
     const pre=el('pre',questionText(item),'question');
     const actions=el('div',undefined,'row-actions');
@@ -168,6 +168,7 @@ async function bulk(decision){
   await load();
 }
 async function adjust(delta){
+  if(busy)return;
   if(!Number.isInteger(delta)||delta===0)throw new Error('请输入非零整数');
   if(!selected.size)throw new Error('请先选择学生');
   busy=true;
@@ -181,6 +182,12 @@ async function adjust(delta){
     }
     await call('/admin/quotas/adjust',{method:'POST',headers:{'Idempotency-Key':adjustment.key},body:JSON.stringify(adjustment.body)});
     adjustment=null;$('#quota-status').textContent='';notify('额度调整已完成');
+  }catch(e){
+    if(e.status>=400&&e.status<500){
+      adjustment=null;
+      $('#quota-status').textContent='本次调整未提交成功，请重新点击调整按钮查看最新预览。';
+    }
+    throw e;
   }finally{busy=false}
   await load();
 }
