@@ -94,7 +94,7 @@ class RecordingUpstream:
         self.calls: list[dict] = []
         self._lock = threading.Lock()
 
-    def generate(self, payload: dict, *, request_id: str) -> Iterable[str]:
+    def generate(self, payload: dict, *, request_id: str, **_kwargs) -> Iterable[str]:
         with self._lock:
             self.calls.append({"request_id": request_id, "payload": payload})
         if self.error:
@@ -111,6 +111,7 @@ class HttpUpstream:
 
     def __init__(self, endpoint: str, api_key_getter, *, timeout: float = 10,
                  first_output_timeout: float = 60, total_timeout: float = 300,
+                 complete_timeout: float = 120, complete_read_timeout: float = 90,
                  max_output_bytes: int = 2 * 1024 * 1024, transport=None):
         if not endpoint.startswith("https://"):
             raise ValueError("managed upstream endpoint must use HTTPS")
@@ -119,6 +120,8 @@ class HttpUpstream:
         self.timeout = timeout
         self.first_output_timeout = first_output_timeout
         self.total_timeout = total_timeout
+        self.complete_timeout = complete_timeout
+        self.complete_read_timeout = complete_read_timeout
         self.max_output_bytes = max_output_bytes
         self.transport = transport
         self._active = {}
@@ -134,7 +137,8 @@ class HttpUpstream:
             except RuntimeError:
                 pass  # The connection has already been closed.
 
-    def _generate_complete(self, payload: dict, request_id: str) -> Iterable[str]:
+    def _generate_complete(self, payload: dict, request_id: str, *,
+                           total_timeout: float | None = None, read_timeout: float | None = None) -> Iterable[str]:
         import httpx
         body = dict(payload)
         body["stream"] = False
@@ -144,15 +148,29 @@ class HttpUpstream:
             "Content-Type": "application/json", "Authorization": f"Bearer {self.api_key_getter()}",
             "X-Classroom-Request-ID": request_id,
         }
+        overall = self.complete_timeout if total_timeout is None else total_timeout
+        read = self.complete_read_timeout if read_timeout is None else read_timeout
         async def complete():
             with self._lock:
                 self._active[request_id] = (asyncio.get_running_loop(), asyncio.current_task())
             try:
-                timeout = httpx.Timeout(self.timeout, read=self.first_output_timeout)
+                timeout = httpx.Timeout(self.timeout, read=read)
                 async with httpx.AsyncClient(timeout=timeout, transport=self.transport, follow_redirects=False) as client:
-                    async with asyncio.timeout(min(self.total_timeout, self.first_output_timeout)):
+                    async with asyncio.timeout(overall):
                         async with client.stream("POST", self.endpoint, content=raw, headers=headers) as response:
-                            response.raise_for_status()
+                            try:
+                                response.raise_for_status()
+                            except httpx.HTTPStatusError as exc:
+                                body_text = ""
+                                try:
+                                    body_text = (await response.aread()).decode("utf-8", "replace")[:300]
+                                except Exception:
+                                    body_text = ""
+                                if exc.response is not None and exc.response.status_code in {400, 422}:
+                                    raise UpstreamError(
+                                        f"provider rejected complete request ({exc.response.status_code}): {body_text}"
+                                    ) from exc
+                                raise
                             data = bytearray()
                             async for chunk in response.aiter_bytes():
                                 data.extend(chunk)
@@ -173,10 +191,11 @@ class HttpUpstream:
             raise UpstreamError("provider answer exceeds configured limit")
         yield text
 
-    def generate(self, payload: dict, *, request_id: str) -> Iterable[str]:
+    def generate(self, payload: dict, *, request_id: str,
+                 total_timeout: float | None = None, read_timeout: float | None = None) -> Iterable[str]:
         body = dict(payload)
         if body.get("stream") is False:
-            yield from self._generate_complete(body, request_id)
+            yield from self._generate_complete(body, request_id, total_timeout=total_timeout, read_timeout=read_timeout)
             return
         body["stream"] = True
         body["metadata"] = {"classroom_request_id": request_id}

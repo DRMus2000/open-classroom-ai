@@ -3,10 +3,12 @@
   const enabled = document.querySelector('#guest-enabled');
   const urlInput = document.querySelector('#guest-url');
   const originInput = document.querySelector('#guest-origin');
+  const originPick = document.querySelector('#guest-origin-pick');
   const origins = document.querySelector('#guest-origins');
   const status = document.querySelector('#guest-status');
   const copyBtn = document.querySelector('#guest-copy');
   const rotateBtn = document.querySelector('#guest-rotate');
+  const rememberedKey = 'classroom-guest-origin';
   let config = null;
   let saving = false;
   let lastTokenUrl = '';
@@ -22,20 +24,56 @@
     return url.origin;
   }
 
-  function configureOrigins(hosts) {
+  function kindLabel(kind) {
+    if (kind === 'vpn') return 'VPN，学生可能访问不到';
+    if (kind === 'virtual') return '虚拟网卡';
+    return '局域网';
+  }
+
+  function rememberedOrigin() {
+    try { return localStorage.getItem(rememberedKey) || ''; }
+    catch (_) { return ''; }
+  }
+
+  function rememberOrigin(value) {
+    try { if (value) localStorage.setItem(rememberedKey, value); }
+    catch (_) {}
+  }
+
+  function configureOrigins(interfaces, hosts) {
     origins.replaceChildren();
+    originPick.replaceChildren();
+    const manual = document.createElement('option');
+    manual.value = '';
+    manual.textContent = '手动填写下方地址';
+    originPick.append(manual);
     const current = new URL(location.origin);
-    for (const host of hosts || []) {
+    const rows = (interfaces && interfaces.length)
+      ? interfaces
+      : (hosts || []).map(address => ({address, name: address, kind: 'physical'}));
+    for (const item of rows) {
       const candidate = new URL(current.origin);
-      candidate.hostname = host;
+      candidate.hostname = item.address || item;
+      const origin = candidate.origin;
       const option = document.createElement('option');
-      option.value = candidate.origin;
+      option.value = origin;
       origins.append(option);
+      const pick = document.createElement('option');
+      pick.value = origin;
+      pick.textContent = (item.name || item.address) + ' · ' + (item.address || item) + '（' + kindLabel(item.kind) + '）';
+      originPick.append(pick);
+    }
+    const remembered = rememberedOrigin();
+    if (remembered) {
+      try { originInput.value = validOrigin(remembered); originPick.value = originInput.value; return; }
+      catch (_) {}
     }
     if (!originInput.value) {
       try { originInput.value = validOrigin(current.origin); }
-      catch (_) { originInput.value = origins.firstElementChild?.value || ''; }
+      catch (_) { originInput.value = originPick.options[1]?.value || ''; }
     }
+    originPick.value = [...originPick.options].some(option => option.value === originInput.value)
+      ? originInput.value : '';
   }
 
   function showUrl(pathOrUrl) {
@@ -61,11 +99,11 @@
     status.textContent = '正在读取…';
     try {
       config = await call('/admin/guest-access');
-      configureOrigins(config.share_hosts);
+      configureOrigins(config.share_interfaces, config.share_hosts);
       enabled.checked = !!config.enabled;
       if (!lastTokenUrl) showUrl('');
       status.textContent = config.enabled
-        ? '访客链接已开启。关闭后立即失效。'
+        ? '访客链接已开启。请用学生设备打开链接确认能访问。'
         : '访客链接已关闭。';
     } catch (e) {
       status.textContent = e.message;
@@ -90,7 +128,7 @@
       config = result;
       if (result.share_url_path || result.token) {
         if (showUrl(result.share_url_path || ('/classroom/guest/?t=' + result.token))) {
-          status.textContent = '已更新。请立即复制链接；刷新页面后明文不会再次显示。';
+          status.textContent = '已更新。请立即复制，并用学生设备验证能打开；刷新后明文不会再次显示。';
         }
       } else {
         lastTokenUrl = '';
@@ -107,12 +145,18 @@
     }
   }
 
-  // app.js 在切换到「课堂设置」时调用 load；若页面直接打开在该分区，则立即读取。
   panels.guestLink = { load: read, loaded: false };
   if (activeView === 'settings') { panels.guestLink.loaded = true; read(); }
   enabled.onchange = () => save({ rotate: enabled.checked && !(config && config.has_token) });
   originInput.oninput = () => {
-    if (sharePath && showUrl(sharePath)) status.textContent = '分享地址已更新，可以复制链接。';
+    rememberOrigin(originInput.value);
+    originPick.value = [...originPick.options].some(option => option.value === originInput.value)
+      ? originInput.value : '';
+    if (sharePath && showUrl(sharePath)) status.textContent = '分享地址已更新，可以复制链接。请用学生设备验证。';
+  };
+  originPick.onchange = () => {
+    if (originPick.value) originInput.value = originPick.value;
+    originInput.oninput();
   };
   rotateBtn.onclick = () => {
     if (!enabled.checked) {
@@ -124,10 +168,10 @@
     if (!lastTokenUrl) return;
     try {
       await navigator.clipboard.writeText(lastTokenUrl);
-      status.textContent = '链接已复制到剪贴板。';
+      status.textContent = '链接已复制。请用学生设备打开确认能访问。';
     } catch (_) {
       urlInput.select();
-      status.textContent = '请手动复制输入框中的链接。';
+      status.textContent = '请手动复制输入框中的链接，并用学生设备验证。';
     }
   };
 })();

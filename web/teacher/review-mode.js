@@ -27,11 +27,15 @@
     try {
       modeConfig = await call('/admin/review-mode');
       paintMode(modeConfig.mode);
-      status.textContent = modeConfig.mode === 'teacher'
+      let text = modeConfig.mode === 'teacher'
         ? '当前：教师审核。'
         : modeConfig.mode === 'ai'
           ? '当前：AI 审核。失败将回退到教师待审。'
           : '当前：不审核，提交后直接生成。';
+      if (modeConfig.ai_audit_paused) {
+        text = (modeConfig.ai_audit_pause_reason || 'AI 审核已暂停，当前由教师审核。') + ' 重新保存审核模式可恢复。';
+      }
+      status.textContent = text;
     } catch (e) {
       status.textContent = e.message;
     }

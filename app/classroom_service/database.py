@@ -458,6 +458,9 @@ class ClassroomDB:
                     if applied[version] != checksums[version]:
                         raise RuntimeError("classroom migration checksum mismatch")
                     continue
+                if version == 5:
+                    from .schema_v5 import preflight_schema_v5
+                    preflight_schema_v5(db)
                 try:
                     db.executescript("BEGIN IMMEDIATE;\n" + script)
                     db.execute("INSERT INTO schema_migrations(version,checksum,applied_at) VALUES(?,?,?)",

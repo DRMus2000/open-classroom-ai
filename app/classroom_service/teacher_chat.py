@@ -47,9 +47,7 @@ class TeacherChat:
             sentinel = object()
             try:
                 if attachment_ids:
-                    with self.service.db.transaction() as db:
-                        for aid in attachment_ids:
-                            db.execute("UPDATE attachments SET retention_class='permanent' WHERE id=? AND owner_user_id=?", (aid, user_id))
+                    self.service.attachments.begin_use(attachment_ids)
                 iterator = iter(upstream.generate(payload, request_id=request_id))
                 while True:
                     pending = asyncio.create_task(asyncio.to_thread(next, iterator, sentinel))
@@ -80,4 +78,6 @@ class TeacherChat:
                     await asyncio.to_thread(iterator.close)
                 with self._active_lock:
                     self.active.discard(user_id)
+                if attachment_ids:
+                    self.service.attachments.end_use(attachment_ids)
         return StreamingResponse(events(), media_type='text/event-stream')

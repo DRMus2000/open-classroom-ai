@@ -1,7 +1,7 @@
 ﻿[CmdletBinding()]
 param(
   [string]$Runtime = (Join-Path $PSScriptRoot '..\..\_release-build\openwebui-classroom-windows-x64\runtime'),
-  [string]$Output = (Join-Path $PSScriptRoot '..\release\openwebui-classroom-2.1.8-windows-x64.zip')
+  [string]$Output = (Join-Path $PSScriptRoot '..\release\openwebui-classroom-2.1.9-windows-x64.zip')
 )
 $ErrorActionPreference = 'Stop'
 $builder = Join-Path $PSScriptRoot '..\app\build_release.py'

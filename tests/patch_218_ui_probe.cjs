@@ -3,6 +3,7 @@ class Element {
   constructor(){this.children=[];this.style={};this.dataset={};this.value='';this.hidden=false;this.disabled=false;this.scrollHeight=0;this.scrollTop=0;this.clientHeight=600;this.classList={add(){},remove(){},toggle(){}}}
   append(...x){this.children.push(...x)} replaceChildren(...x){this.children=x} querySelectorAll(){return []} setAttribute(){} focus(){} select(){}
   get firstElementChild(){return this.children[0]}
+  get options(){return this.children}
 }
 function setup(kind){
   const nodes=new Map(),$=s=>{if(!nodes.has(s))nodes.set(s,new Element());return nodes.get(s)};
@@ -63,7 +64,8 @@ async function recoverCompletion(restarted){
 async function guestShare(){
   const {c,$}=setup('teacher');
   vm.runInContext("activeView='review'",c);
-  c.fetch=async()=>ok({enabled:true,version:1,has_token:true,share_hosts:['192.168.1.10','192.168.2.10']});
+  c.fetch=async()=>ok({enabled:true,version:1,has_token:true,share_hosts:['192.168.1.10','192.168.2.10'],
+    share_interfaces:[{address:'192.168.1.10',name:'以太网',kind:'physical',rank:0},{address:'192.168.2.10',name:'VPN',kind:'vpn',rank:2}]});
   vm.runInContext(fs.readFileSync('classroom/web/teacher/guest-link.js','utf8'),c);
   await vm.runInContext('panels.guestLink.load()',c);
   assert.equal($('#guest-origin').value,'http://192.168.1.10:3000');

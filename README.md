@@ -1,12 +1,12 @@
 # 课堂 AI（open-classroom-ai）
 
-Open WebUI 0.11.2 的课堂审批集成：独立审批/额度/执行服务、原生登录与文件桥接、教师管理页与学生提问页。当前测试候选版本 **2.1.8**。
+Open WebUI 0.11.2 的课堂审批集成：独立审批/额度/执行服务、原生登录与文件桥接、教师管理页与学生提问页。当前测试候选版本 **2.1.9**。
 
 源码仓库：https://github.com/DRMus2000/open-classroom-ai
 
-2.1.8 审计修复补丁（`2.1.8-audit1`）修复审核解析、附件审核、调度、重试恢复、教师上传和访客分享地址。已有 2.1.8 安装参见 [补丁安装说明](PATCH_2.1.8_README.md)，通过 `scripts/Build-Patch.ps1` 构建程序补丁包。
+2.1.9 完整便携包包含 2.1.8 审计修复及其后的审核超时/异常隔离、v5 升级预检、网卡分享地址和教师附件按引用保留。已有 2.1.8 安装可解压新包覆盖程序文件，或参见 [2.1.8 补丁说明](PATCH_2.1.8_README.md)。
 
-完整便携 ZIP 由 `scripts/Build-Package.ps1` 构建（输出名含版本号，如 `openwebui-classroom-2.1.8-windows-x64.zip`），含 Python 3.11.9 与已有完整运行时，不含真实账号、聊天、上传文件或密钥。不要把工作区的 `rehearsal`、旧发行目录或实际 `data` 手动复制进发行包。
+完整便携 ZIP 由 `scripts/Build-Package.ps1` 构建（输出名含版本号，如 `openwebui-classroom-2.1.9-windows-x64.zip`），含 Python 3.11.9 与已有完整运行时，不含真实账号、聊天、上传文件或密钥。不要把工作区的 `rehearsal`、旧发行目录或实际 `data` 手动复制进发行包。
 
 ## 文档
 

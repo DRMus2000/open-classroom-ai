@@ -165,8 +165,9 @@ def create_app(service: ClassroomService, *, internal_auth: InternalAuthenticato
     @app.get('/api/classroom/v1/admin/guest-access')
     async def get_guest_access(request: Request):
         p = await principal(request); require_teacher(p)
-        from .network import share_hosts
-        return {**service.get_guest_access(), "share_hosts": await asyncio.to_thread(share_hosts)}
+        from .network import share_hosts, share_interfaces
+        return {**service.get_guest_access(), "share_hosts": await asyncio.to_thread(share_hosts),
+                "share_interfaces": await asyncio.to_thread(share_interfaces)}
 
     @app.put('/api/classroom/v1/admin/guest-access')
     async def update_guest_access(request: Request):
@@ -429,6 +430,20 @@ def create_app(service: ClassroomService, *, internal_auth: InternalAuthenticato
     async def admin_health(request: Request):
         p = await principal(request); require_teacher(p)
         return service.ready_report()
+
+    @app.get("/api/classroom/v1/admin/attachments/storage")
+    async def attachment_storage(request: Request):
+        p = await principal(request); require_teacher(p)
+        return service.attachments.storage_report()
+
+    @app.post("/api/classroom/v1/admin/attachments/cleanup")
+    async def attachment_cleanup(request: Request):
+        p = await principal(request); require_teacher(p)
+        body = await request.json()
+        if not body.get("confirm"):
+            raise ValidationError("请确认清理无引用附件")
+        removed = service.attachments.cleanup_unreferenced()
+        return {"removed": removed, "storage": service.attachments.storage_report()}
 
     @app.get("/api/classroom/v1/admin/audit")
     async def audit(request: Request, limit: int = 100):

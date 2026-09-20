@@ -90,7 +90,8 @@ async function load({includeQueue=true,includeStudents=true}={}){
   const detailOpen=!!$('#detail').open;
   const h=await call('/admin/health');paused=h.classroom_paused;
   const health=$('#health');health.className='pill '+(h.ready?'pill-ok':'pill-warn');
-  health.textContent=(h.ready?'服务已就绪':'服务未就绪')+' · 时区 '+h.timezone+(paused?' · 全班已暂停':'');
+  health.textContent=(h.ready?'服务已就绪':'服务未就绪')+' · 时区 '+h.timezone+(paused?' · 全班已暂停':'')+(h.ai_audit_paused?' · AI审核已降级':'');
+  if(!h.ready||h.ai_audit_paused)health.className='pill pill-warn';
   const pauseBtn=$('#pause');pauseBtn.textContent=paused?'恢复全班 AI':'暂停全班 AI';pauseBtn.className=paused?'btn btn-primary':'btn btn-danger';
   if(includeStudents)await refreshStudents();
   if(includeQueue&&!detailOpen&&activeView==='review')await queue(true);
@@ -256,6 +257,26 @@ $('#add-student').onclick=async()=>{
     busy=false;await load();
   }catch(e){$('#import-status').textContent=e.message;error(e)}
   finally{busy=false;$('#add-student').disabled=false}
+};
+
+async function loadStorage(){
+  const box=$('#attachment-storage-status');if(!box)return;
+  try{
+    const s=await call('/admin/attachments/storage');
+    const fmt=x=>(x.count||0)+' 个 / '+((x.bytes||0)/1048576).toFixed(2)+' MiB';
+    box.textContent='学生归档 '+fmt(s.student_archived)+'；教师引用 '+fmt(s.referenced)+'；无引用 '+fmt(s.unreferenced)+'；生成中 '+fmt(s.in_flight);
+  }catch(e){box.textContent=e.message}
+}
+panels.attachmentStorage={load:loadStorage,loaded:false};
+const storageRefresh=$('#attachment-storage-refresh'),storageCleanup=$('#attachment-storage-cleanup');
+if(storageRefresh)storageRefresh.onclick=()=>loadStorage().catch(error);
+if(storageCleanup)storageCleanup.onclick=async()=>{
+  if(!confirm('清理已过宽限期且无引用、未在生成中的附件？学生归档和仍被对话引用的文件会保留。'))return;
+  try{
+    const r=await call('/admin/attachments/cleanup',{method:'POST',body:JSON.stringify({confirm:true})});
+    notify('已清理 '+r.removed+' 个无引用附件');
+    await loadStorage();
+  }catch(e){error(e)}
 };
 
 let initialView='review';try{initialView=localStorage.getItem('classroom-teacher-view')||'review'}catch(_){}

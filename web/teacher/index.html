@@ -194,12 +194,26 @@
           <button id="guest-rotate" class="btn">重新生成链接</button>
           <button id="guest-copy" class="btn btn-primary" hidden>复制链接</button>
         </div>
-        <label for="guest-origin">学生可访问的教师机地址</label>
+        <label for="guest-origin-pick">本机网卡地址</label>
+        <select id="guest-origin-pick" class="select" style="width:100%;margin-top:8px">
+          <option value="">手动填写下方地址</option>
+        </select>
+        <label for="guest-origin" style="display:block;margin-top:10px">学生可访问的教师机地址</label>
         <input id="guest-origin" class="input" list="guest-origins" style="width:100%;margin-top:8px" placeholder="例如 http://192.168.1.10:3000">
         <datalist id="guest-origins"></datalist>
-        <p class="muted">请使用与学生电脑同一局域网的地址，并以 LAN 模式启动。多网卡时可从候选地址中选择。</p>
+        <p class="muted">请使用与学生电脑同一局域网的地址，并以 LAN 模式启动。VPN / 虚拟网卡排在后面。本机发现的地址不代表学生一定能打开，复制后请用学生设备验证。</p>
         <input id="guest-url" class="input" readonly style="width:100%;margin-top:12px" placeholder="开启或重新生成后在此显示链接">
         <p id="guest-status" class="status" role="status"></p>
+      </div>
+
+      <div class="card" id="attachment-storage-panel">
+        <h3>课堂附件存储</h3>
+        <p class="muted">学生已提交附件随审批归档。教师对话按引用保留；无引用附件过宽限期后可清理。生成中的附件不会被清理。</p>
+        <p id="attachment-storage-status" class="status" role="status"></p>
+        <div class="toolbar">
+          <button id="attachment-storage-refresh" class="btn">刷新统计</button>
+          <button id="attachment-storage-cleanup" class="btn">清理无引用附件</button>
+        </div>
       </div>
     </section>
   </main>
@@ -219,10 +233,10 @@
   </div>
 </dialog>
 
-<script src="app.js?v=2.1.8-audit1"></script>
+<script src="app.js?v=2.1.9"></script>
 <script src="system-prompt.js?v=teacher-20260917"></script>
-<script src="guest-link.js?v=2.1.8-audit1"></script>
-<script src="review-mode.js?v=ui-fix-20260918b"></script>
+<script src="guest-link.js?v=2.1.9"></script>
+<script src="review-mode.js?v=2.1.9"></script>
 <script src="insights.js?v=insights-20260917"></script>
 </body>
 </html>

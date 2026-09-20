@@ -2,7 +2,7 @@
 
 **文档版本：** 1.1  
 **整理日期：** 2026-09-18  
-**适用项目：** Open WebUI 0.11.2 + 课堂审核服务 + Windows 便携式整合包（当前测试候选 2.1.8）  
+**适用项目：** Open WebUI 0.11.2 + 课堂审核服务 + Windows 便携式整合包（当前测试候选 2.1.9）  
 **源码：** https://github.com/DRMus2000/open-classroom-ai
 
 ## 1. 项目目标
@@ -189,7 +189,7 @@ Name,Email,Password,Role
 
 ## 10. 当前实现状态
 
-截至 2026-09-19（2.1.8 测试候选），下列能力已在源码中实现，并以便携完整包形式交付（由 `scripts/Build-Package.ps1` 生成，例如 `release/openwebui-classroom-2.1.8-windows-x64.zip`）：课堂审核状态机与审核模式 teacher/ai/none、每日额度、教师批量额度、CSV 与单人导入、首次改密、文件与图片支持、审计/导出、暂停控制、Windows 便携包、教师直接对话、DPAPI 启动配置记忆、学生/访客对话 UI、Markdown 安全渲染、学生列表分页、审核原文展示、系统提示词与 AI 审计提示词、学生 events 流式回答、提问 1000 字限制、使用概况词云（仅已通过审核）、AI 审核短重试与教师队列轻量刷新。
+截至 2026-09-20（2.1.9 测试候选），下列能力已在源码中实现，并以便携完整包形式交付（由 `scripts/Build-Package.ps1` 生成，例如 `release/openwebui-classroom-2.1.9-windows-x64.zip`）：课堂审核状态机与审核模式 teacher/ai/none、每日额度、教师批量额度、CSV 与单人导入、首次改密、文件与图片支持、审计/导出、暂停控制、Windows 便携包、教师直接对话、DPAPI 启动配置记忆、学生/访客对话 UI、Markdown 安全渲染、学生列表分页、审核原文展示、系统提示词与 AI 审计提示词、学生 events 流式回答、提问 1000 字限制、使用概况词云（仅已通过审核）、AI 审核短重试与教师队列轻量刷新、审核异常隔离与超时预算、v5 升级预检、网卡分享地址、教师附件按引用保留。
 
 公开源码见 GitHub；机房部署以完整 ZIP 解压为准。覆盖更新程序文件时先停止课堂，再合并 `app`/`web`/`scripts`，不要删除 `data`；浏览器建议 Ctrl+F5。现场验收边界见 [IMPLEMENTATION_STATUS.md](../IMPLEMENTATION_STATUS.md)。
 

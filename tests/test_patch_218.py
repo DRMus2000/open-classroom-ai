@@ -144,7 +144,8 @@ def test_non_stream_audit_has_total_timeout_and_prefers_final_content():
             yield b'{'
             await asyncio.Event().wait()
 
-    upstream = HttpUpstream('https://fixture.invalid/v1', lambda: 'fake', total_timeout=0.05,
+    upstream = HttpUpstream('https://fixture.invalid/v1', lambda: 'fake', complete_timeout=0.05,
+                            complete_read_timeout=0.05,
                             transport=httpx.MockTransport(lambda req: httpx.Response(200, stream=SlowBody())))
     with pytest.raises(UpstreamError):
         list(upstream.generate({**question(), 'stream': False}, request_id='audit-timeout'))
@@ -246,6 +247,7 @@ def test_v4_upgrade_preserves_attachment_rows_and_native_links(tmp_path):
 
 def test_share_hosts_excludes_loopback(monkeypatch):
     from classroom.app.classroom_service import network
+    monkeypatch.setattr(network, 'adapter_interfaces', lambda: [])
     monkeypatch.setattr(network.socket, 'getaddrinfo', lambda *a, **k: [
         (2, 1, 6, '', (ip, 0)) for ip in ('127.0.0.1', '0.0.0.0', '169.254.1.1', '192.168.1.10', '192.168.1.10')])
     assert network.share_hosts() == ['192.168.1.10']

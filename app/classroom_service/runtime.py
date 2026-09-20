@@ -1,11 +1,12 @@
 """One process owns dispatch, recovery and the classroom database lifecycle."""
 from concurrent.futures import ThreadPoolExecutor, wait
+import logging
 from pathlib import Path
 import threading
 from .clock import iso, parse_iso
 
+from .ai_auditor import AIAuditor, _global_audit_fault
 from .worker import ClassroomWorker
-from .ai_auditor import AIAuditor
 
 
 class InstanceLock:
@@ -84,7 +85,13 @@ class ClassroomRuntime:
                     self.last_cleanup = now
                 if self.audit_future is None or self.audit_future.done():
                     if self.audit_future is not None:
-                        self.audit_future.result()
+                        try:
+                            self.audit_future.result()
+                        except Exception as exc:
+                            logging.getLogger(__name__).exception("classroom auditor task failed")
+                            if _global_audit_fault(exc):
+                                raise
+                            self.service.note_audit_isolation_failure()
                     self.audit_future = self.audit_pool.submit(self.auditor.tick)
                 for future in tuple(self.futures):
                     if future.done():

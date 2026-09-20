@@ -11,6 +11,10 @@ changing a live database.
 
 The 2.1.8 audit patch adds v5: attachment ownership references registered
 security identities, allowing teachers to upload without student enrollment.
-It preserves attachment rows, native links, and operation copies. Back up
-offline before applying the patch; rollback requires the pre-upgrade backup
-and matching old code, not just replacement of Python files.
+It preserves attachment rows, native links, and operation copies. The v5 SQL
+checksum is frozen. Startup runs a preflight for missing security_states on
+attachment owners and native-file users; if it fails the migration rolls back
+and the database stays on v4. Inspect or repair only enrolled students and
+registered teachers with `scripts/Repair-V5Identities.ps1` (add `-Apply` after
+verifying). Do not delete attachments or invent login identities. Keep the
+joint backup taken before the patch.

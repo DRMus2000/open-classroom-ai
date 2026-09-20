@@ -11,6 +11,7 @@ import io
 import os
 from pathlib import Path, PurePath
 import re
+import threading
 import uuid
 
 from .clock import iso
@@ -62,6 +63,8 @@ class AttachmentStore:
         self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=True)
         self.clock = clock
+        self._in_flight = set()
+        self._in_flight_lock = threading.Lock()
 
     def _now(self):
         return self.clock.now() if self.clock else __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
@@ -169,22 +172,75 @@ class AttachmentStore:
             for aid in ids:
                 db.execute("UPDATE attachments SET request_id=?,retention_class='permanent' WHERE id=? AND request_id IS NULL", (request_id, aid))
 
+    def begin_use(self, ids: list[str]) -> None:
+        with self._in_flight_lock:
+            self._in_flight.update(ids)
+
+    def end_use(self, ids: list[str]) -> None:
+        with self._in_flight_lock:
+            self._in_flight.difference_update(ids)
+
+    def _in_flight_ids(self) -> set[str]:
+        with self._in_flight_lock:
+            return set(self._in_flight)
+
+    def _delete_rows(self, db, rows) -> int:
+        removed = 0
+        for row in rows:
+            path = (self.root / row['blob_ref']).resolve()
+            if self.root.resolve() not in path.parents:
+                raise RuntimeError('attachment path escaped storage root')
+            path.unlink(missing_ok=True)
+            db.execute('DELETE FROM native_attachment_copies WHERE attachment_id=?', (row['id'],))
+            db.execute('DELETE FROM native_attachments WHERE attachment_id=?', (row['id'],))
+            db.execute('DELETE FROM attachments WHERE id=?', (row['id'],))
+            removed += 1
+        return removed
+
+    def storage_report(self) -> dict:
+        in_flight = self._in_flight_ids()
+        rows = self.db.query_all("SELECT id,owner_user_id,request_id,size_bytes,retention_class FROM attachments")
+        student = referenced = unreferenced = inflight = 0
+        student_bytes = referenced_bytes = unreferenced_bytes = inflight_bytes = 0
+        native = {row[0] for row in self.db.query_all("SELECT attachment_id FROM native_attachments")}
+        copies = {row[0] for row in self.db.query_all("SELECT attachment_id FROM native_attachment_copies")}
+        linked = native | copies
+        for row in rows:
+            size = int(row["size_bytes"])
+            if row["id"] in in_flight:
+                inflight += 1
+                inflight_bytes += size
+            elif row["request_id"]:
+                student += 1
+                student_bytes += size
+            elif row["id"] in linked:
+                referenced += 1
+                referenced_bytes += size
+            else:
+                unreferenced += 1
+                unreferenced_bytes += size
+        return {
+            "student_archived": {"count": student, "bytes": student_bytes},
+            "referenced": {"count": referenced, "bytes": referenced_bytes},
+            "unreferenced": {"count": unreferenced, "bytes": unreferenced_bytes},
+            "in_flight": {"count": inflight, "bytes": inflight_bytes},
+        }
+
     def cleanup_temporary(self, *, hours=24) -> int:
         from datetime import timedelta
         cutoff = iso(self._now() - timedelta(hours=hours))
-        removed = 0
+        skip = self._in_flight_ids()
         with self.db.transaction() as db:
-            rows = db.execute("SELECT id,blob_ref FROM attachments WHERE request_id IS NULL AND retention_class='temporary' AND created_at<?", (cutoff,)).fetchall()
-            for row in rows:
-                path = (self.root / row['blob_ref']).resolve()
-                if self.root.resolve() not in path.parents:
-                    raise RuntimeError('attachment path escaped storage root')
-                # Hold the same DB write lock as submission so a newly attached
-                # file can never be collected during its permanent transition.
-                path.unlink(missing_ok=True)
-                db.execute('DELETE FROM native_attachment_copies WHERE attachment_id=?', (row['id'],))
-                db.execute('DELETE FROM native_attachments WHERE attachment_id=?', (row['id'],))
-                db.execute('DELETE FROM attachments WHERE id=?', (row['id'],))
-                removed += 1
-        return removed
+            rows = db.execute(
+                """SELECT id,blob_ref FROM attachments
+                   WHERE request_id IS NULL AND retention_class='temporary' AND created_at<?
+                     AND id NOT IN (SELECT attachment_id FROM native_attachments)
+                     AND id NOT IN (SELECT attachment_id FROM native_attachment_copies)""",
+                (cutoff,),
+            ).fetchall()
+            rows = [row for row in rows if row["id"] not in skip]
+            return self._delete_rows(db, rows)
+
+    def cleanup_unreferenced(self, *, hours=24) -> int:
+        return self.cleanup_temporary(hours=hours)
 
