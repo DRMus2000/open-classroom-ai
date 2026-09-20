@@ -1,0 +1,4 @@
+{
+  "name": "open-classroom-ai",
+  "install": "bash scripts/cloud-agent-install.sh"
+}
